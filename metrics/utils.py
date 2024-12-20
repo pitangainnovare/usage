@@ -20,7 +20,7 @@ def get_load_data_function(file_path):
         return load_tar_gz
 
 
-def load_csv(file_obj, delimiter='\t', is_stream=False):
+def load_csv(file_obj, delimiter=',', is_stream=False):
     """
     Loads and processes a CSV file, yielding each row as a dictionary.
 

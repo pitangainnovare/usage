@@ -423,6 +423,13 @@ HAYSTACK_CONNECTIONS = {
         "SILENTLY_FAIL": False,
         "SOLR_TIMEOUT": 10,
     },
+    "es": {
+        'ENGINE': 'haystack.backends.elasticsearch7_backend.Elasticsearch7SearchEngine',
+        'URL': 'http://elastic:iHktg66E@172.19.0.12:9200/',
+        'INDEX_NAME': 'top100articles_v2',
+        'SOLR_TIMEOUT': 10,
+        'KWARGS': {'verify_certs': False}
+    },
 }
 
 USE_SOLR = env.bool("USE_SOLR", default=False)

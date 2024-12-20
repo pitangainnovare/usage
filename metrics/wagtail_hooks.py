@@ -3,7 +3,7 @@ from wagtail.snippets.views.snippets import SnippetViewSet, SnippetViewSetGroup
 from wagtail.snippets.models import register_snippet
 
 from config.menu import get_menu_order
-from .models import Top100Articles, Top100ArticlesFile
+from .models import Top100Articles, Top100ArticlesFile, ArticleLangByCountry, ArticleLangByCountryFile
 
 
 class Top100ArticlesSnippetViewSet(SnippetViewSet):
@@ -38,7 +38,54 @@ class Top100ArticlesFileSnippetViewSet(SnippetViewSet):
     model = Top100ArticlesFile
     menu_label = _("Top 100 Articles File")
     icon = "list-ol"
-    menu_order = 100
+    menu_order = 200
+
+    list_display = (
+        'attachment',
+        'get_status_display',
+        'creator',
+        'created',
+        'updated',
+    )
+    list_filter = (
+        "status",
+    )
+
+
+class ArticleLangByCountrySnippetViewSet(SnippetViewSet):
+    model = ArticleLangByCountry
+    menu_label = _("ArticleLang by Countries")
+    icon = "list-ol"
+    menu_order = 300
+
+    list_display = (
+        'collection',
+        'issn',
+        'pid',
+        'language',
+        'publication_year',
+        'publication_month',
+        'access_country',
+        'access_year',
+        'total_item_requests',
+    )
+    list_filter = (
+        "collection",
+        "issn",
+        'language',
+        'access_year',
+        'access_country',
+    )
+    search_fields = (
+        "pid",
+    )
+
+
+class ArticleLangByCountryFileSnippetViewSet(SnippetViewSet):
+    model = ArticleLangByCountryFile
+    menu_label = _("ArticleLang by Country Files")
+    icon = "list-ol"
+    menu_order = 400
 
     list_display = (
         'attachment',
@@ -59,8 +106,10 @@ class MetricsViewSetGroup(SnippetViewSetGroup):
     menu_order = get_menu_order("metrics")
     
     items = (
-        Top100ArticlesSnippetViewSet, 
+        Top100ArticlesSnippetViewSet,
         Top100ArticlesFileSnippetViewSet,
+        ArticleLangByCountrySnippetViewSet,
+        ArticleLangByCountryFileSnippetViewSet,
     )
 
 

@@ -5,8 +5,9 @@ from wagtail.snippets.models import register_snippet
 from config.menu import get_menu_order
 
 from .models import (
-    UnexpectedEvent, 
-    Top100ArticlesFileEvent
+    UnexpectedEvent,
+    Top100ArticlesFileEvent,
+    ArticleLangByCountryFileEvent,
 )
 
 
@@ -33,6 +34,30 @@ class UnexpectedEventSnippetViewSet(SnippetViewSet):
         "exception_msg",
         "traceback",
         "detail",
+        "created",
+    )
+
+
+class ArticleLangByCountryFileEventSnippetViewSet(SnippetViewSet):
+    model = ArticleLangByCountryFileEvent
+    menu_label = _("ArticleLangByCountry File Events")
+    icon = 'warning'
+    menu_order = get_menu_order("tracker")
+    add_to_admin_menu = False
+
+    list_display = (
+        "file",
+        "status",
+        "lines",
+        "message",
+        "created",
+    )
+    list_filter = (
+        "status",
+        "lines",
+    )
+    search_fields = (
+        "file",
         "created",
     )
 
@@ -70,6 +95,7 @@ class TrackerViewSetGroup(SnippetViewSetGroup):
     items = (
         UnexpectedEventSnippetViewSet, 
         Top100ArticlesFileEventSnippetViewSet,
+        ArticleLangByCountryFileEventSnippetViewSet,
     )
 
 

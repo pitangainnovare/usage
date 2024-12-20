@@ -223,3 +223,37 @@ class Top100ArticlesFileEvent(CommonControlField):
         obj.lines = obj.lines + lines
         obj.message = message
         obj.save()
+
+
+class ArticleLangByCountryFileEvent(CommonControlField):
+    file = models.ForeignKey("metrics.ArticleLangByCountry", on_delete=models.SET_NULL, null=True, blank=True)
+    status = models.CharField(_("Status"), max_length=64, null=True, blank=True)
+    lines = models.IntegerField(_("Lines"), default=0, null=True, blank=True)
+    message = models.TextField(_("Message"), null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.file}"
+    
+    panels = [
+        FieldPanel("file"),
+        FieldPanel("status"),
+        FieldPanel("lines"),
+        FieldPanel("message"),
+    ]
+
+    class Meta:
+        verbose_name_plural = _("ArticleLangByCountry File Events")
+    
+    @classmethod
+    def create_or_update(cls, user, file, status, lines, message):
+        try:
+            obj = cls.objects.get(file=file)
+        except ArticleLangByCountryFileEvent.DoesNotExist:
+            obj = cls()
+            obj.creator = user
+
+        obj.file = file
+        obj.status = status
+        obj.lines = obj.lines + lines
+        obj.message = message
+        obj.save()
