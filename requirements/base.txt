@@ -63,11 +63,13 @@ minio==7.2.7
 reverse-geocode==1.6  # https://pypi.org/project/reverse-geocode/
 
 # SciELO Log Validator
--e git+https://github.com/scieloorg/scielo_log_validator#egg=scielo_log_validator
+# -e git+https://github.com/scieloorg/scielo_log_validator@v0.5.0#egg=scielo_log_validator
+scielo-log-validator @ file:///app/libs/scielo_log_validator-0.4.0-py3-none-any.whl
 
 # SciELO Usage COUNTER
 device-detector==0.10  # https://github.com/thinkwelltwd/device_detector
--e git+https://github.com/scieloorg/scielo_usage_counter#egg=scielo_usage_counter
+# -e git+https://github.com/scieloorg/scielo_usage_counter@v0.6.0#egg=scielo_usage_counter
+scielo-usage-counter @ file:///app/libs/scielo_usage_counter-0.6.0-py3-none-any.whl
 
 # packtools
 # ------------------------------------------------------------------------------

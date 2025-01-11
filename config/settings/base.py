@@ -119,6 +119,7 @@ LOCAL_APPS = [
     "core",
     "log_manager",
     "metrics",
+    "resources",
     "tracker",
 ]
 

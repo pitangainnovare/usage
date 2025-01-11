@@ -34,6 +34,16 @@ build_date: ## Show build date
 ############################################
 ## atalhos docker compose desenvolvimento ##
 ############################################
+build_updating_libs:  ## Build app using local.yml
+	@echo "Building scielo_log_validator"
+	@cd /home/rafaeljpd/Repos/tech/scl/scielo_log_validator && python -m build .
+	@echo "Building scielo_usage_counter"
+	@cd /home/rafaeljpd/Repos/tech/scl/scielo_usage_counter && python -m build .
+	@echo "Copying libs to usage"
+	@cp /home/rafaeljpd/Repos/tech/scl/scielo_log_validator/dist/* /home/rafaeljpd/Repos/tech/scl/usage/libs
+	@cp /home/rafaeljpd/Repos/tech/scl/scielo_usage_counter/dist/* /home/rafaeljpd/Repos/tech/scl/usage/libs
+	@echo "Building scielo_usage"
+	@docker compose -f local.yml build
 
 build:  ## Build app using $(compose)
 	@docker compose -f $(compose) build

@@ -19,6 +19,10 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 # Requirements are installed here to ensure they will be cached.
 COPY ./requirements .
 
+# Copy the wheel files for scielo_log_validator and scielo_usage_counter
+COPY /libs/scielo_log_validator-0.4.0-py3-none-any.whl /app/libs/scielo_log_validator-0.4.0-py3-none-any.whl
+COPY /libs/scielo_usage_counter-0.6.0-py3-none-any.whl /app/libs/scielo_usage_counter-0.6.0-py3-none-any.whl
+
 # Update pip
 RUN python -m pip install --upgrade pip
 

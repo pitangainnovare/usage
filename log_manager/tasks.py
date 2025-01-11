@@ -10,7 +10,10 @@ from django.utils.translation import gettext as _
 from core.utils.utils import _get_user
 from config import celery_app
 from collection.models import Collection
-from tracker.models import UnexpectedEvent
+from log_manager_config import exceptions as lmc_exceptions, models as lmc_models
+from resources.models import RobotUserAgent, MMDB
+# from tracker import models as tracker_models
+# from tracker import choices as tracker_choices
 
 from . import (
     exceptions, 
@@ -24,61 +27,63 @@ User = get_user_model()
 
 
 @celery_app.task(bind=True, name=_('Discover logs for a list of collections'))
-def task_discover_logs_bulk(self, collections=[], is_enabled=True, days_to_go_back=None, from_date=None, user_id=None, username=None):
+def task_discover_logs_bulk(self, collections=[], days_to_go_back=None, from_date=None, user_id=None, username=None):
     for col in collections or Collection().acron2_list:
         logging.info(f'Discovering logs for collection {col}.')
-        task_discover_logs.apply_async(args=(col, is_enabled, days_to_go_back, from_date, user_id, username))
+        task_discover_logs.apply_async(args=(col, days_to_go_back, from_date, user_id, username))
 
 
 @celery_app.task(bind=True, name=_('Discover logs for one collection'))
-def task_discover_logs(self, collection_acron2, is_enabled=True, days_to_go_back=None, from_date=None, user_id=None, username=None):
+def task_discover_logs(self, collection_acron2, days_to_go_back=None, from_date=None, user_id=None, username=None):
     """
     Task to discover logs.
 
     Parameters:
         collection_acron2 (str): Acronym of the collection.
-        is_enabled (boolean)
         days_to_go_back (int, optional): Number of days to count backward from the current date (e.g., 1 for yesterday, 7 for a week ago).
         from_date (str, optional): Specific date from which logs should be considered (format: 'YYYY-MM-DD').
         user_id
         username
 
     Raises:
-        UndefinedCollectionConfigError: If there is no configuration for the logs directory.
+        CollectionLogDirectoryError: If the CollectionLogDirectory is missing for the collection.
         InvalidDateFormatError: If the provided date format is invalid.
     
     Returns:
         None.
     """
-    col_configs_dirs = models.CollectionConfig.filter_by_collection_and_config_type(
-        collection_acron2=collection_acron2, 
-        config_type=choices.COLLECTION_CONFIG_TYPE_DIRECTORY_LOGS,
-        is_enabled=is_enabled,
+    col_configs_dirs = lmc_models.CollectionLogDirectory.objects.filter(
+        collection_acron2=collection_acron2,
+        active=True,
     )
 
     if len(col_configs_dirs) == 0:
-        UnexpectedEvent.create(
-            exceptions.UndefinedCollectionConfigError(_(f'[{collection_acron2}] Collection Config is missing for the logs directory parameter')),
-            detail={
-                'Action': _('Add an Collection Config for the logs directory parameter.'),
-                'Result': _('The collection has been ignored.'),
-                'Collection': collection_acron2,
-            }
-        )
-        raise exceptions.UndefinedCollectionConfigError(_('ERROR. Please, add an Collection Config for the Logs Directory.'))
+        # tracker_models.Event.create(
+        #     user=self.request.user,
+        #     message_type=tracker_choices.ERROR,
+        #     message=_('CollectionLogDirectory is missing.'),
+        #     detail={
+        #         'Action': _('Add a CollectionLogDirectory for the collection.'),
+        #         'Result': _('The collection has been ignored.'),
+        #         'Collection': collection_acron2,
+        #     }
+        # )
+        raise lmc_exceptions.UndefinedCollectionLogDirectoryError(_('ERROR. Please, add a CollectionLogDirectory for the collection.'))
 
-    app_config_log_file_formats = models.ApplicationConfig.get_field_values(config_type=choices.APPLICATION_CONFIG_TYPE_LOG_FILE_FORMAT)
+    supported_logfile_extensions = lmc_models.SupportedLogFile.objects.filter(active=True).values_list('extension', flat=True)
 
-    if len(app_config_log_file_formats) == 0:
-        UnexpectedEvent.create(
-            exceptions.UndefinedApplicationConfigError(_(f'[{collection_acron2}] Application Config is missing for the log file supported format parameter.')),
-            detail={
-                'Action': _('Add an Application Config to indicate the supported log file format.'),
-                'Result': _('The collection has been ignored.'),
-                'Collection': collection_acron2,
-            }
-        )
-        raise exceptions.UndefinedApplicationConfigError(_('ERROR. Please, add an Application Config for each of the supported log file formats.'))
+    if len(supported_logfile_extensions) == 0:
+        # tracker_models.Event.create(
+        #     user=self.request.user,
+        #     message_type=tracker_models.choices.ERROR,
+        #     message=_(f'SupportedLogfile is missing.'),
+        #     detail={
+        #         'Action': _('Add a SupportedLogFile to indicate the supported log file format.'),
+        #         'Result': _('The collection has been ignored.'),
+        #         'Collection': collection_acron2,
+        #     }
+        # )
+        raise lmc_exceptions.UndefinedSupportedLogFile(_('ERROR. Please, add a SupportedLogFile for each of the supported log file formats.'))
 
     if days_to_go_back:
         obj_from_date = utils.get_date_offset_from_today(days=days_to_go_back)
@@ -86,28 +91,33 @@ def task_discover_logs(self, collection_acron2, is_enabled=True, days_to_go_back
         try:
             obj_from_date = utils.formatted_text_to_datetime(from_date)
         except ValueError:
-            UnexpectedEvent.create(
-                exceptions.InvalidDateFormatError(_(f'[{collection_acron2}] Invalid date format usage.')),
-                detail={
-                    'Action': _('Inform a valid date format (YYYY-MM-DD).'),
-                    'Result': _('The collection has been ignored.'),
-                    'Collection': collection_acron2,
-                }
-            )
+            # tracker_models.Event.create(
+            #     user=self.request.user,
+            #     message_type=tracker_models.choices.ERROR,
+            #     message=_('Invalid date format usage.'),
+            #     detail={
+            #         'Action': _('Inform a valid date format (YYYY-MM-DD).'),
+            #         'Result': _('The collection has been ignored.'),
+            #         'Collection': collection_acron2,
+            #     }
+            # )
             raise exceptions.InvalidDateFormatError(_('ERROR. Please, use a valid date format (YYYY-MM-DD).'))
     
     for cd in col_configs_dirs:
         for root, _sub_dirs, files in os.walk(cd.value):
             for name in files:
                 _name, extension = os.path.splitext(name)
-                if extension.lower() not in app_config_log_file_formats:
-                    UnexpectedEvent.create(
-                        exceptions.UnsupportedFileExtentionError(_(f'[{extension.lower()}] is not a supported extension.')),
-                        detail={
-                            'Action': _('Add an Collection Config to indicate the extesion.'),
-                            'Result': _('The file has been ignored.'),
-                            'Collection': collection_acron2,
-                        })
+                if extension.lower() not in supported_logfile_extensions:
+                    # tracker_models.Event.create(
+                    #     user=self.request.user,
+                    #     message_type=tracker_models.choices.ERROR,
+                    #     message=_('Unsupported file extension.'),
+                    #     detail={
+                    #         'Data': extension,
+                    #         'Action': _('Add an Collection Config to indicate the extesion.'),
+                    #         'Result': _('The file has been ignored.'),
+                    #         'Collection': collection_acron2,
+                    #     })
                     continue
 
                 file_path = os.path.join(root, name)
@@ -168,6 +178,7 @@ def task_validate_log(self, log_file_hash, user_id=None, username=None):
         )
         log_file.status = choices.LOG_FILE_STATUS_QUEUED
     else:
+        # TODO: Add a message to the tracker
         log_file.status = choices.LOG_FILE_STATUS_INVALIDATED
 
     log_file.save()
@@ -179,26 +190,30 @@ def task_check_missing_logs_for_date(self, collection_acron2, date, user_id=None
     collection = models.Collection.objects.get(acron2=collection_acron2)
     
     try:
-        n_expected_files = models.CollectionConfig.get_number_of_expected_files_by_day(collection_acron2=collection_acron2, date=date)
-    except exceptions.UndefinedCollectionConfigError:
-        UnexpectedEvent.create(
-            exceptions.UndefinedCollectionConfigError(_(f'[{collection_acron2}] Collection Config is missing for the number of expected files parameter.')),
-            detail={
-                'Action': _('Add an Collection Config to indicate the number of expected files.'),
-                'Result': _('The collection has been ignored.'),
-                'Collection': collection_acron2,
-                'Date': date,
-            })
+        n_expected_files = lmc_models.CollectionLogFilesPerDay.get_number_of_expected_files_by_day(collection_acron2=collection_acron2, date=date)
+    except lmc_exceptions.UndefinedCollectionFilesPerDayError:
+        # tracker_models.Event.create(
+        #     user=self.request.user,
+        #     message_type=tracker_models.choices.ERROR,
+        #     message=_('CollectionLogFilesPerDay is missing.'),
+        #     detail={
+        #         'Action': _('Add a CollectionLogFilesPerDay for the collection.'),
+        #         'Result': _('The collection has been ignored.'),
+        #         'Collection': collection_acron2,
+        #         'Date': date,
+        #     })
         return
-    except exceptions.MultipleCollectionConfigError:
-        UnexpectedEvent.create(
-            exceptions.MultipleCollectionConfigError(_(f'[{collection_acron2}] There are two or more Collection Config values for the number of expected files parameter.')),
-            detail={
-                'Action': _('Keep only one Collection Configuration enabled for the number of expected files.'),
-                'Result': _('The collection has been ignored.'),
-                'Collection': collection_acron2,
-                'Date': date,
-            })
+    except lmc_exceptions.MultipleFilesPerDayForTheSameDateError:
+        # tracker_models.Event.create(
+        #     user=self.request.user,
+        #     message_type=tracker_models.choices.ERROR,
+        #     message=_('There are two or more configurations for the same date.'),
+        #     detail={
+        #         'Action': _('Keep only one configuration enabled for the number of expected files on a single date.'),
+        #         'Result': _('The collection has been ignored.'),
+        #         'Collection': collection_acron2,
+        #         'Date': date,
+        #     })
         return
         
     n_found_logs = models.LogFileDate.get_number_of_found_files_for_date(collection_acron2=collection_acron2, date=date)
@@ -253,70 +268,52 @@ def task_log_files_count_status_report(self, collection_acron2, user_id=None, us
 
 @celery_app.task(bind=True, name=_('Send a message'))
 def task_send_message(self, subject, message, collection_acron2, user_id=None, username=None):
-    col_configs = models.CollectionConfig.filter_by_collection_and_config_type(
-        collection_acron2=collection_acron2,
-        config_type=choices.COLLECTION_CONFIG_TYPE_EMAIL,
-    )
-    if col_configs.count() == 0:
-        raise exceptions.UndefinedCollectionConfigError(_("ERROR. Please, add an Application Configuration for the EMAIL attribute."))
-
-    recipient_list = [cc.value for cc in col_configs]
+    collection_emails = lmc_models.CollectionEmail.objects.filter(collection_acron2=collection_acron2, active=True).values_list('email', flat=True)
+    if len(collection_emails) == 0:
+        # tracker_models.Event.create(
+        #     user=self.request.user,
+        #     message_type=tracker_models.choices.ERROR,
+        #     message=_('CollectionConfig is missing.'),
+        #     detail={
+        #         'Action': _('Add an Application Configuration for the EMAIL attribute.'),
+        #         'Result': _('The message has not been sent.'),
+        #         'Collection': collection_acron2,
+        #     })
+        raise exceptions.UndefinedCollectionConfigError(_("ERROR. Please, add an Email Configuration for the collection."))
     
     send_mail(
         subject=subject,
         message=message,
         from_email=settings.EMAIL_HOST_USER,
-        recipient_list=recipient_list
+        recipient_list=collection_emails
     )
 
 
 @celery_app.task(bind=True, name=_('Parse logs'), timelimit=-1)
 def task_parse_logs(self, collection_acron2, user_id=None, username=None):
     """
-    Parses log files associated with a given collection. 
-    It retrieves necessary configuration details such as paths for Counter Robots and Geolocation MMDB files,
-    checks their existence, and iterates through queued log files for parsing.
+    Parses log files associated with a given collection.
 
     Args:
         collection_acron2 (str): Acronym associated with the collection for which logs are being parsed.
         user_id
         username
 
-    Raises:
-        UndefinedCollectionConfigError: If necessary configuration details are missing for Counter Robots or Geolocation MMDB files.
-
     Returns:
         None.
-    """
-    ac_robots = models.ApplicationConfig.filter_by_config_type(choices.APPLICATION_CONFIG_TYPE_PATH_SUPPLY_ROBOTS)
-    if not ac_robots or not os.path.exists(ac_robots.value) or not os.path.isfile(ac_robots.value):
-        raise exceptions.UndefinedApplicationConfigError(_("ERROR. Please, add an Application Configuration for the Counter Robots text file path."))
-    
-    ac_mmdb = models.ApplicationConfig.filter_by_config_type(choices.APPLICATION_CONFIG_TYPE_PATH_SUPPLY_MMDB)
-    if not ac_mmdb or not os.path.exists(ac_mmdb.value) or not os.path.isfile(ac_mmdb.value):
-        raise exceptions.UndefinedApplicationConfigError(_("ERROR. Please, add an Application Configuration fot the Geolocation MMDB file path."))
-    
+    """    
     for lf in models.LogFile.objects.filter(status=choices.LOG_FILE_STATUS_QUEUED, collection__acron2=collection_acron2):
         logging.info(f'PARSING file {lf.path}')
-        task_parse_log.apply_async(args=(
-                lf.hash,
-                ac_robots.value, 
-                ac_mmdb.value,
-                user_id,
-                username,
-            )
-        )
+        task_parse_log.apply_async(args=(lf.hash, user_id, username))
         
 
 @celery_app.task(bind=True, name=_('Parse one log'), timelimit=-1)
-def task_parse_log(self, log_file_hash, path_robots, path_mmdb, user_id=None, username=None):
+def task_parse_log(self, log_file_hash, user_id=None, username=None):
     """
     Parses a log file, extracts relevant information, and creates processed log records in the database.
 
     Args:
         log_file_hash (str): Hash representing the log file to be parsed.
-        path_robots (str): File path to the Counter Robots text file.
-        path_mmdb (str): File path to the Geolocation MMDB file.
         user_id
         username
 
@@ -329,25 +326,42 @@ def task_parse_log(self, log_file_hash, path_robots, path_mmdb, user_id=None, us
     log_file.status = choices.LOG_FILE_STATUS_PARSING
     log_file.save()
 
+    robots_list = RobotUserAgent.get_all_patterns()
+    if not robots_list:
+        logging.error('ERROR. There are no robots available in the database.')
+        log_file.status = choices.LOG_FILE_STATUS_QUEUED
+        log_file.save()
+        return
+
+    mmdb = MMDB.objects.last()
+    if not mmdb:
+        logging.error('ERROR. There are no MMDB files available in the database.')
+        log_file.status = choices.LOG_FILE_STATUS_QUEUED
+        log_file.save()
+        return
+    
     try:
         for row in utils.parse_file(
-            path_mmdb,
-            path_robots,
-            log_file.path,
+            path_file=log_file.path,
+            mmdb_data=mmdb.data,
+            robots_list=robots_list,
         ):
             '''
-            hit.local_datetime
-            hit.client_name
-            hit.client_version
-            hit.ip
-            hit.geolocation
-            hit.action
+            Each row is a tuple with the following structure:
+                hit.local_datetime
+                hit.client_name
+                hit.client_version
+                hit.ip
+                hit.geolocation
+                hit.action
             '''
             st, bn, bv, ip, latlong, action = row
 
-            # FIXME: It depends on the counter-access library to become more flexible.
+            # latlong is a string with the following format: 'latitude\tlongitude'
             lat, long = latlong.split('\t')
 
+            # FIXME: Should we improve the model with a country_code label?
+            # FIXME: It is a good idea to convert the action_name to its respective components (increasing the LogProcessedRow model)?
             models.LogProcessedRow.create(
                 user=user,
                 log_file=log_file,
@@ -359,64 +373,11 @@ def task_parse_log(self, log_file_hash, path_robots, path_mmdb, user_id=None, us
                 longitude=float(long),
                 action_name=action,
             )
-    except:
+    except Exception as e:
+        logging.error(f'ERROR. {e}')
         log_file.status = choices.LOG_FILE_STATUS_QUEUED
     else:
+        logging.info(f'File {log_file.path} has been parsed.')
         log_file.status = choices.LOG_FILE_STATUS_PROCESSED
         
     log_file.save()
-
-
-@celery_app.task(bind=True, name=_('Download supplies'))
-def task_download_supplies(self, url_robots, url_mmdb, user_id=None, username=None):
-    user = _get_user(self.request, username=username, user_id=user_id)
-
-    try:
-        supplies_directory = models.ApplicationConfig.filter_by_config_type(choices.APPLICATION_CONFIG_TYPE_DIRECTORY_SUPPLIES).value
-    except AttributeError:
-        UnexpectedEvent.create(
-            exceptions.UndefinedApplicationConfigError('Application Config is missing for the supplies directory parameter.'),
-            detail={
-                'Action': _('Add an Application Config for the supplies directory parameter.'),
-                'Result': _('The collection has been ignored.'),
-                'URL_Robots': url_robots,
-                'URL_MMDB': url_mmdb,
-            })
-        return
-    
-    try:
-        if not os.path.exists(supplies_directory):
-            os.makedirs(supplies_directory, exist_ok=True)
-    except OSError as e:
-        UnexpectedEvent.create(
-            FileNotFoundError('It was not possible create the supplies directory.'),
-            detail={
-                'Action': _('Check the Administration for the supplies directory parameter.'),
-                'Result': _('The collection has been ignored.'),
-                'Supplies Directory': supplies_directory,
-                'Message': e,
-            })
-
-    try:
-        robots_path, mmdb_path = utils.download_supplies(supplies_directory, url_robots, url_mmdb)
-    except FileNotFoundError:
-        UnexpectedEvent.create(
-            FileNotFoundError('It was no possible to save the COUNTER Robots and geolocation map in the supplies directory.'),
-            detail={
-                'Action': _('Check the Application Config for the supplies directory parameter.'),
-                'Result': _('The collection has been ignored.'),
-                'Supplies Directory': supplies_directory,
-            })
-        return
-
-    models.ApplicationConfig.create(
-        user,
-        choices.APPLICATION_CONFIG_TYPE_PATH_SUPPLY_ROBOTS,
-        robots_path,
-    )
-
-    models.ApplicationConfig.create(
-        user,
-        choices.APPLICATION_CONFIG_TYPE_PATH_SUPPLY_MMDB,
-        mmdb_path,
-    )
