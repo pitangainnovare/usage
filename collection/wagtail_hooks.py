@@ -1,8 +1,5 @@
 from django.utils.translation import gettext as _
 from wagtail.snippets.views.snippets import SnippetViewSet
-from wagtail.snippets.models import register_snippet
-
-from config.menu import get_menu_order
 
 from .models import Collection
 
@@ -10,10 +7,8 @@ from .models import Collection
 class CollectionSnippetViewSet(SnippetViewSet):
     model = Collection
     icon = "folder-open-inverse"
-    menu_name = 'collection'
     menu_label = _("Collection")
-    menu_order = get_menu_order("collection")
-    add_to_admin_menu = True
+    menu_order = 100
 
     list_display = (
         "main_name",
@@ -57,6 +52,3 @@ class CollectionSnippetViewSet(SnippetViewSet):
         "updated_by",
     )
     export_filename = "collections"
-
-
-register_snippet(CollectionSnippetViewSet)
