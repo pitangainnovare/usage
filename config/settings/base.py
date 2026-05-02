@@ -5,7 +5,8 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
-from django.utils.translation import gettext_lazy as _
+
+from config.collections import COLLECTION_ACRON3_SIZE_MAP  # noqa: F401
 
 ROOT_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 # core/
@@ -116,10 +117,13 @@ LOCAL_APPS = [
     # Your stuff: custom apps go here
     "collection",
     "core",
+    "document",
     "log_manager",
     "log_manager_config",
     "metrics",
+    "reports",
     "resources",
+    "source",
     "tracker",
 ]
 
@@ -402,36 +406,54 @@ SIMPLE_JWT = {
 
 SEARCH_PAGINATION_ITEMS_PER_PAGE = 10
 
-# Elasticsearch
+# OpenSearch
 # ------------------------------------------------------------------------------
-ES_URL = env("ES_URL", default="http://192.168.0.33:9200/")
-ES_INDEX_NAME = env("ES_INDEX_NAME", default="usage")
-ES_API_KEY = env("ES_API_KEY", default="")
-ES_BASIC_AUTH = env("ES_BASIC_AUTH", default=("elastic", "iHktg66E"))
-ES_VERIFY_CERTS = env.bool("ES_VERIFY_CERTS", default=False)
+OPENSEARCH_URL = env("OPENSEARCH_URL", default="http://localhost:9200/")
+OPENSEARCH_INDEX_NAME = env("OPENSEARCH_INDEX_NAME", default="usage")
+OPENSEARCH_API_KEY = env("OPENSEARCH_API_KEY", default="")
+OPENSEARCH_BASIC_AUTH = env(
+    "OPENSEARCH_BASIC_AUTH",
+    default=("admin", "admin"),
+)
+OPENSEARCH_VERIFY_CERTS = env.bool(
+    "OPENSEARCH_VERIFY_CERTS",
+    default=False,
+)
+
+# Collectors configuration
+# ------------------------------------------------------------------------------
+# ArticleMeta
+ARTICLEMETA_COLLECT_URL = env(
+    "ARTICLEMETA_COLLECT_URL",
+    default="http://articlemeta.scielo.org/api/v1/article/counter_dict",
+)
+ARTICLEMETA_MAX_RETRIES = env.int("ARTICLEMETA_MAX_RETRIES", default=5)
+ARTICLEMETA_SLEEP_TIME = env.int("ARTICLEMETA_SLEEP_TIME", default=30)
+
+# Dataverse
+DATAVERSE_ENDPOINT = env("DATAVERSE_ENDPOINT", default="https://data.scielo.org/api")
+DATAVERSE_ROOT_COLLECTION = env("DATAVERSE_ROOT_COLLECTION", default="scielodata")
+DATAVERSE_SLEEP_TIME = env.int("DATAVERSE_SLEEP_TIME", default=30)
+
+# OPAC
+OPAC_ENDPOINT = env("OPAC_ENDPOINT", default="https://www.scielo.br/api/v1/counter_dict")
+OPAC_MAX_RETRIES = env.int("OPAC_MAX_RETRIES", default=5)
+OPAC_SLEEP_TIME = env.int("OPAC_SLEEP_TIME", default=30)
+
+# Preprints
+OAI_PMH_PREPRINT_ENDPOINT = env(
+    "OAI_PMH_PREPRINT_ENDPOINT",
+    default="https://preprints.scielo.org/index.php/scielo/oai",
+)
+OAI_METADATA_PREFIX = env("OAI_METADATA_PREFIX", default="oai_dc")
+OAI_PMH_MAX_RETRIES = env.int("OAI_PMH_MAX_RETRIES", default=5)
+
+# SciELO Books
+SCIELO_BOOKS_BASE_URL = env("SCIELO_BOOKS_BASE_URL", default="http://localhost:5984")
+SCIELO_BOOKS_TIMEOUT = env.int("SCIELO_BOOKS_TIMEOUT", default=60)
+SCIELO_BOOKS_DB_NAME = env("SCIELO_BOOKS_DB_NAME", default="scielobooks_1a")
+SCIELO_BOOKS_LIMIT = env.int("SCIELO_BOOKS_LIMIT", default=1000)
 
 # Collection size categories
 # ------------------------------------------------------------------------------
-EXTRA_LARGE_COLLECTIONS = env.list("EXTRA_LARGE_COLLECTIONS", default=["scl"])
-LARGE_COLLECTIONS = env.list("LARGE_COLLECTIONS", default=["chl", "col", "mex"])
-MEDIUM_COLLECTIONS = env.list("MEDIUM_COLLECTIONS", default=["cri", "esp", "psi", "prt", "ven"])
-SMALL_COLLECTIONS = env.list("SMALL_COLLECTIONS", default=["arg", "bol", "cub", "data", "ecu", "per", "preprints", "pry", "rve", "spa", "sss", "sza", "ury", "wid"])
-
-# Collection size mapping
-def _build_collection_size_map():
-    """Build mapping of collection acronyms to their size categories."""
-    size_map = {}
-    size_categories = {
-        "xlarge": EXTRA_LARGE_COLLECTIONS,
-        "large": LARGE_COLLECTIONS,
-        "medium": MEDIUM_COLLECTIONS,
-        "small": SMALL_COLLECTIONS,
-    }
-    
-    for size, collections in size_categories.items():
-        for acron3 in collections:
-            size_map[acron3] = size
-    
-    return size_map
-
-COLLECTION_ACRON3_SIZE_MAP = _build_collection_size_map()
+SUPPORTED_LOGFILE_EXTENSIONS = env.list("SUPPORTED_LOGFILE_EXTENSIONS", default=[".log", ".gz", ".zip"])
