@@ -114,10 +114,8 @@ LOCAL_APPS = [
     "core.users",
     "core_settings",
     # Your stuff: custom apps go here
-    "article",
     "collection",
     "core",
-    "journal",
     "log_manager",
     "log_manager_config",
     "metrics",
