@@ -21,6 +21,13 @@ def task_run(request):
 
     task = current_app.tasks.get(p_task.task)
 
+    if task is None:
+        messages.error(
+            request,
+            _("Task '{0}' not found in the Celery registry.").format(p_task.task),
+        )
+        return redirect(request.META.get("HTTP_REFERER"))
+
     kwargs = json.loads(p_task.kwargs)
     kwargs["user_id"] = request.user.id
 

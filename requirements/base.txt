@@ -63,10 +63,13 @@ minio==7.2.7
 reverse-geocode==1.6  # https://pypi.org/project/reverse-geocode/
 
 # SciELO Log Validator
--e git+https://github.com/scieloorg/scielo_log_validator@0.4.0#egg=scielo_log_validator
+-e git+https://github.com/scieloorg/scielo_log_validator@2.0.0#egg=scielo_log_validator
+
+# SciELO Scholarly Data
+-e git+https://github.com/scieloorg/scielo_scholarly_data@v0.1.4#egg=scielo_scholarly_data
 
 # SciELO Usage COUNTER
--e git+https://github.com/scieloorg/scielo_usage_counter@1.5.1#egg=scielo_usage_counter
+-e git+https://github.com/scieloorg/scielo_usage_counter@2.0.0#egg=scielo_usage_counter
 
 # Device Detector
 device-detector==0.10  # https://github.com/thinkwelltwd/device_detector
@@ -93,6 +96,6 @@ tenacity==8.3.0  # https://pypi.org/project/tenacity/
 # ------------------------------------------------------------------------------
 articlemetaapi==1.26.7
 
-# ElasticSearch
+# OpenSearch
 # ------------------------------------------------------------------------------
-elasticsearch==8.18.1  # https://elasticsearch-py.readthedocs.io/en/v8.18.1/
+opensearch-py==3.1.0
