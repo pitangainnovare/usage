@@ -29,7 +29,7 @@ def get_date_obj(date_str: str, format: str = "%Y-%m-%d") -> datetime.date:
     try:
         return datetime.strptime(date_str, format).date()
     except (ValueError, TypeError):
-        ...
+        return None
 
 
 def get_date_range_str(from_date_str: str = None, until_date_str: str = None, days_to_go_back: int = None) -> tuple[str, str]:
@@ -99,12 +99,9 @@ def truncate_datetime_to_hour(dt):
     Returns:
     datetime: The truncated datetime object.
     """
-    if isinstance(dt, str):
-        try:
-            dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            logging.error("Invalid datetime string format. Expected '%Y-%m-%d %H:%M:%S'.")
-            return None
+    dt = _coerce_datetime(dt)
+    if dt is None:
+        return None
 
     return dt.replace(minute=0, second=0, microsecond=0)
 
@@ -119,11 +116,23 @@ def extract_minute_second_key(dt):
     Returns:
     str: A string in the format "MM:SS" representing the minute and second.
     """
+    dt = _coerce_datetime(dt)
+    if dt is None:
+        return None
+
+    return f"{dt.minute:02}:{dt.second:02}"
+
+
+def _coerce_datetime(dt):
+    if isinstance(dt, datetime):
+        return dt
+
     if isinstance(dt, str):
         try:
-            dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
+            return datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
         except ValueError:
             logging.error("Invalid datetime string format. Expected '%Y-%m-%d %H:%M:%S'.")
             return None
 
-    return f"{dt.minute:02}:{dt.second:02}"
+    logging.error("Invalid datetime value: %r.", dt)
+    return None

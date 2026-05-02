@@ -1,247 +1,77 @@
-import langcodes
 import re
 
-
-ITEMS_SEP_FOR_LOCATION = [";", ", ", "|", "/"]
-PARTS_SEP_FOR_LOCATION = [" - ", "- ", " -", ", ", "(", "/"]
-
-ITEMS_SEP_FOR_CITY = [",", "|"]
-PARTS_SEP_FOR_CITY = []
-
-
-def remove_extra_spaces(text):
-    text = text and text.strip()
-    if not text:
-        return text
-    # padroniza a quantidade de espaços
-    return " ".join([item.strip() for item in text.split() if item.strip()])
-
-
-def standardize_code_and_name(original):
-    """
-    Dado o texto original, identifica pares de code e nome.
-    Os separadores podem separar code e nome e/ou itens de lista.
-    Ex.: USP / Unicamp
-    São Paulo/SP, Rio de Janeiro/RJ
-    """
-    text_ = original
-    text_ = text_ and text_.strip()
-    if not text_:
-        return []
-
-    text_ = remove_extra_spaces(text_)
-    if not text_:
-        yield {"name": None}
-        return
-
-    items_separators = ITEMS_SEP_FOR_LOCATION
-    parts_separators = PARTS_SEP_FOR_LOCATION
-
-    PARTBR = "~PARTBR~"
-    LINEBR = "~LINEBR~"
-    for sep in items_separators:
-        text_ = text_.replace(sep, PARTBR)
-    for sep in parts_separators:
-        text_ = text_.replace(sep, PARTBR)
-
-    codes = []
-    names = []
-    for item in text_.split(PARTBR):
-        item = item.strip()
-        if not item:
-            continue
-        if len(item) == 2:
-            codes.append(item)
-        else:
-            names.append(item)
-
-    if len(names) == len(codes):
-        for acron, name in zip(codes, names):
-            yield {"code": acron, "name": name}
-    elif len(names) == 0:
-        for acron in codes:
-            yield {"code": acron}
-    elif len(codes) == 0:
-        for name in names:
-            yield {"name": name}
-    else:
-        # como o texto está bem fora do padrão,
-        # pode-se evidenciar retornando o original
-        yield {"name": original}
-
-
-def standardize_name(original):
-    original = original and original.strip()
-    if not original:
-        return
-
-    items_separators = ITEMS_SEP_FOR_CITY
-
-    LINEBR = "~LINEBR~"
-
-    text_ = original
-    text_ = remove_extra_spaces(text_)
-
-    for sep in items_separators:
-        text_ = text_.replace(sep, LINEBR)
-
-    for row in text_.split(LINEBR):
-        row = row and row.strip()
-        if not row:
-            continue
-        yield {"name": row}
+import langcodes
 
 
 def standardize_language_code(language_code: str, threshold=0.75):
-    """
-    Standardizes a media language using langcodes library.
-
-    Parameters:
-    media_language (str): The media language to be standardized.
-    threshold (float): The minimum score for a language to be considered valid. Default is 0.75.
-
-    Returns:
-    str: The standardized media language or None if the input is not a valid language tag.
-    """
-    if not language_code:
-        return 'un'
-    
-    if langcodes.tag_is_valid(language_code):
-        return langcodes.standardize_tag(language_code).split('-')[0]
-    
-    # Handle special cases
-    if language_code.lower() == 'esp':
-        return 'es'
-
-    inferred_lang, score = langcodes.best_match(language_code, langcodes.LANGUAGE_ALPHA3.keys())
-
-    if score >= threshold:
-        return langcodes.standardize_tag(inferred_lang).split('-')[0]
-
-    # Handle unknown languages
-    return 'un'
+    language_code = str(language_code).strip().strip("'\"")
+    lang = langcodes.get(language_code)
+    try:
+        parts = str(lang).split("-")
+    except Exception:
+        return "un"
+    return parts[0]
 
 
 def standardize_pid_v2(pid_v2):
-    """
-    Standardizes a PID v2.
+    if not pid_v2 or not pid_v2.lower().startswith("s") or len(pid_v2) < 23:
+        return ""
 
-    Parameters:
-    pid_v2 (str): The PID v2 to be standardized.
-
-    Returns:
-    str: The standardized PID v2 or an empty string if the input is not a valid PID v2.
-    """
-    if not pid_v2 or not pid_v2.lower().startswith('s') or len(pid_v2) < 23:
-        return ''
-    
     if len(pid_v2) == 23:
         return pid_v2[0].upper() + pid_v2[1:]
-    
+
     if len(pid_v2) > 23:
         return pid_v2[0].upper() + pid_v2[1:23]
-    
-    if len(pid_v2) < 23:
-        return ''
+
+    return ""
 
 
 def standardize_pid_v3(pid_v3):
-    """
-    Standardizes a PID v3 using langcodes library."
-
-    Parameters:
-    pid_v3 (str): The PID v3 to be standardized.
-
-    Returns:
-    str: The standardized PID v3 or an empty string if the input is not a valid PID v3.
-    """
-
-    if not pid_v3:
-        return ''
-
-    if len(pid_v3) == 23:
-        return pid_v3
-    
-    if len(pid_v3) > 23:
-        return pid_v3[:23]
-    
-    if len(pid_v3) < 23:
-        return ''
+    return str(pid_v3 or "")
 
 
 def standardize_doi(text):
-    """"
-    Standardizes a DOI.
-    
-    Parameters:
-    text (str): The DOI to be standardized.
+    text = (text or "").strip()
+    if not text:
+        return ""
 
-    Returns:
-    str: The standardized DOI
-    """
-    PATTERNS_DOI = [re.compile(pd) for pd in [
-        r'10.\d{4,9}/[-._;()/:A-Z0-9]+$',
-        r'10.1002/[^\s]+$',
-        r'10.\d{4}/\d+-\d+X?(\d+)\d+<[\d\w]+:[\d\w]*>\d+.\d+.\w+;\d$',
-        r'10.1207/[\w\d]+\&\d+_\d+$',
-        r'10.\d{4,9}/[-._;()/:a-zA-Z0-9]*']
+    doi_prefixes = [
+        "https://doi.org/",
+        "http://doi.org/",
+        "https://dx.doi.org/",
+        "http://dx.doi.org/",
+        "doi.org/",
+        "dx.doi.org/",
+        "doi:",
     ]
-    matched_doi = False
-
-    for pattern_doi in PATTERNS_DOI:
-        matched_doi = pattern_doi.search(text)
-        if matched_doi:
+    for prefix in doi_prefixes:
+        if text.lower().startswith(prefix):
+            text = text[len(prefix):]
             break
 
-    if not matched_doi:
-        return  
-    
-    return matched_doi.group().upper()
+    if text.lower().startswith("10."):
+        return text
+
+    return ""
 
 
 def standardize_pid_generic(pid_generic):
-    """
-    Standardizes a PID."
-    
-    Parameters:
-    pid_generic (str): The PID to be standardized.
-
-    Returns:
-    str: The standardized PID or an empty string if the input is not a valid PID.
-    """
-
-    if not pid_generic:
-        return ''
-    
-    pid_generic_based_on_doi = standardize_doi(pid_generic)
-    if pid_generic_based_on_doi:
-        return pid_generic_based_on_doi
-    
-    return pid_generic.strip().upper()
+    value = str(pid_generic or "").strip().upper()
+    value = re.sub(r"\s+", "", value)
+    value = value.rstrip(".,;:")
+    return value or ""
 
 
 def standardize_year_of_publication(year_of_publication):
-    """
-    Standardizes a year of publication.
+    value = str(year_of_publication or "").strip()
+    if not value:
+        return ""
+    match = re.match(r"(\d{4})", value)
+    return match.group(1) if match else ""
 
-    Parameters:
-        year_of_publication (str): The year of publication to be standardized.
 
-    Returns:
-        str: The standardized year of publication or an empty string if the input is not a valid year.
-    """
-    if not year_of_publication:
-        return ''
-    
-    # Truncate to 4 characters if longer
-    if isinstance(year_of_publication, str) and len(year_of_publication) > 4:
-        year_of_publication = year_of_publication[:4]
-
-    try:
-        year = int(year_of_publication)
-        if 1500 <= year <= 2100:
-            return str(year)
-    except ValueError:
-        pass
-   
-    return ''
+def language_iso(code):
+    code = re.split(r"-|_", code)[0] if code else ""
+    if langcodes.tag_is_valid(code):
+        return langcodes.standardize_tag(code)
+    return ""

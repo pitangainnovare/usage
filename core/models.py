@@ -11,7 +11,7 @@ from wagtail.snippets.models import register_snippet
 from wagtailautocomplete.edit_handlers import AutocompletePanel
 
 from . import choices
-from .utils.utils import language_iso
+from .utils.standardizer import language_iso
 
 User = get_user_model()
 
