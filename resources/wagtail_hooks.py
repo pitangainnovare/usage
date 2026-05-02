@@ -15,13 +15,25 @@ class RobotUserAgentSnippetViewSet(SnippetViewSet):
 
     list_display = (
         "pattern",
+        "source_labels",
+        "is_active",
         "last_changed",
     )
     search_fields = (
         "pattern",
+        "source_url",
+    )
+    list_filter = (
+        "source_counter",
+        "source_scielo",
+        "is_active",
     )
     list_export = (
         "pattern",
+        "source_counter",
+        "source_scielo",
+        "is_active",
+        "source_url",
         "last_changed",
     )
     export_filename = "robots"

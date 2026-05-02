@@ -1,209 +1,20 @@
 import logging
 
-from django.db import models
-from django.db.models import Q
+from django.db import IntegrityError, models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from wagtail.admin.panels import FieldPanel
 from wagtailautocomplete.edit_handlers import AutocompletePanel
 
 from collection.models import Collection
-from core.forms import CoreAdminModelForm
-from core.models import CommonControlField
 
 from . import choices
 
 
-class LogFileDate(CommonControlField):
-    date = models.DateField(
-        verbose_name=_("Date"),
-        null=False,
-        blank=False,
-        db_index=True,
-    )
-
-    log_file = models.ForeignKey(
-        'LogFile',
-        verbose_name=_('Log File'),
-        blank=True,
-        on_delete=models.DO_NOTHING,
-        db_index=True,
-    )
-
-    base_form_class = CoreAdminModelForm
-
-    panel = [
-        FieldPanel('date'),
-        AutocompletePanel('log_file')
-    ]
-
-    class Meta:
-        ordering = ['-date']
-        verbose_name = _("Log File Date")
-        verbose_name_plural = _("Log File Dates")
-        unique_together = (
-            'date',
-            'log_file',
-        )
-        indexes = [
-            models.Index(fields=['date', 'log_file']),
-        ]
-
-    @classmethod
-    def create_or_update(cls, user, log_file, date):
-        obj, created = cls.objects.get_or_create(
-            log_file=log_file, 
-            date=date,
-        )
-
-        if not created:
-            obj.updated_by = user
-            obj.updated = timezone.now()
-        else:
-            obj.creator = user
-            obj.created = timezone.now()
-
-        return obj
-    
-    @classmethod
-    def filter_by_collection_and_date(cls, collection, date):
-        return cls.objects.filter(
-            ~Q(log_file__status__in=[
-                choices.LOG_FILE_STATUS_CREATED, 
-                choices.LOG_FILE_STATUS_INVALIDATED
-            ]),
-            log_file__collection__acron3=collection,
-            date=date,
-        )
-        
-    @classmethod
-    def get_number_of_found_files_for_date(cls, collection, date):
-        return cls.objects.filter(
-            ~Q(log_file__status__in=[
-                choices.LOG_FILE_STATUS_CREATED, 
-                choices.LOG_FILE_STATUS_INVALIDATED
-            ]),
-            log_file__collection__acron3=collection,
-            date=date,
-        ).count()
-
-    def __str__(self):
-        return f'{self.log_file.path}-{self.date}'
-
-
-class CollectionLogFileDateCount(CommonControlField):
-    collection = models.ForeignKey(
-        Collection, 
-        verbose_name=_('Collection'), 
-        on_delete=models.DO_NOTHING, 
-        null=False, 
-        blank=False,
-    )
-
-    date = models.DateField(
-        _('Date'),
-        null=False,
-        blank=False,
-    )
-    
-    year = models.IntegerField(
-        _('Year'),
-        null=False,
-        blank=False,
-    )
-    
-    month = models.IntegerField(
-        _('Month'),
-        null=False,
-        blank=False,
-    )
-
-    found_log_files = models.IntegerField(
-        verbose_name=_('Number of Found Valid Log Files'), 
-        default=0,
-    )
-
-    expected_log_files = models.IntegerField(
-        verbose_name=_('Number of Expected Valid Log Files'),
-        blank=True,
-        null=True,
-    )
-
-    is_usage_metric_computed = models.BooleanField(
-        verbose_name=_('Is Usage Metric Computed'),
-        default=False,
-    )
-
-    exported_files_count = models.SmallIntegerField(
-        verbose_name=_('Exported Files Count'),
-        default=0,
-    )
-    
-    status = models.CharField(
-        verbose_name=_('Status'),
-        choices=choices.COLLECTION_LOG_FILE_DATE_COUNT,
-        max_length=3,
-    )
-
-    def set_status(self):
-        if self.found_log_files < self.expected_log_files:
-            self.status = choices.COLLECTION_LOG_FILE_DATE_COUNT_MISSING_FILES
-        elif self.found_log_files > self.expected_log_files:
-            self.status = choices.COLLECTION_LOG_FILE_DATE_COUNT_EXTRA_FILES
-        else:
-            self.status = choices.COLLECTION_LOG_FILE_DATE_COUNT_OK
-
-    def set_is_usage_metric_computed(self):
-        if self.exported_files_count == self.found_log_files:
-            self.is_usage_metric_computed = True
-             
-    @classmethod
-    def create_or_update(cls, user, collection, date, expected_log_files, found_log_files):
-        obj, created = cls.objects.get_or_create(
-            collection=collection, 
-            date=date,
-            month=date.month,
-            year=date.year,
-        )
-
-        if not created:
-            obj.updated_by = user
-            obj.updated = timezone.now()
-        else:
-            obj.creator = user
-            obj.created = timezone.now()
-
-        obj.expected_log_files = expected_log_files            
-        obj.found_log_files = found_log_files
-        obj.set_status()
-        
-        obj.save()
-        return obj
-    
-    class Meta:
-        ordering = ['-date']
-        verbose_name = _("Collection Log File Date Count")
-        unique_together = (
-            'collection',
-            'date',
-        )
-
-    panels = [
-        AutocompletePanel('collection'),
-        FieldPanel('date'),
-        FieldPanel('year'),
-        FieldPanel('month'),
-        FieldPanel('found_log_files'),
-        FieldPanel('expected_log_files'),
-        FieldPanel('status'),
-        FieldPanel('is_usage_metric_computed'),
-    ]
-
-    def __str__(self):
-        return f'{self.collection.acron3}-{self.date}'
-    
-
-class LogFile(CommonControlField):
+class LogFile(models.Model):
+    created = models.DateTimeField(verbose_name=_("Creation date"), auto_now_add=True)
+    updated = models.DateTimeField(verbose_name=_("Last update date"), auto_now=True)
+    date = models.DateField(verbose_name=_("Date"), null=True, blank=True, db_index=True)
     hash = models.CharField(_("Hash MD5"), max_length=32, null=True, blank=True, unique=True)
 
     path = models.CharField(_("Name"), max_length=255, null=False, blank=False)
@@ -246,18 +57,24 @@ class LogFile(CommonControlField):
         default=0,
     )
 
+    parse_heartbeat_at = models.DateTimeField(
+        _("Parse Heartbeat At"),
+        null=True,
+        blank=True,
+    )
+
     panels = [
         FieldPanel('hash'),
+        FieldPanel('date'),
         FieldPanel('path'),
         FieldPanel('stat_result'),
         FieldPanel('status'),
         FieldPanel('validation'),
         FieldPanel('summary'),
         FieldPanel('last_processed_line'),
+        FieldPanel('parse_heartbeat_at'),
         AutocompletePanel('collection'),
     ]
-
-    base_form_class = CoreAdminModelForm
 
     class Meta:
         verbose_name = _("Log File")
@@ -268,25 +85,28 @@ class LogFile(CommonControlField):
         return cls.objects.get(hash=hash)
 
     @classmethod
-    def create_or_update(cls, user, collection, path, stat_result, hash, status=None):
+    def create_or_update(cls, collection, path, stat_result, hash, status=None):
         try:
+            obj, created = cls.objects.get_or_create(
+                hash=hash,
+                defaults={
+                    "collection": collection,
+                    "path": path,
+                    "stat_result": stat_result,
+                    "status": status or choices.LOG_FILE_STATUS_CREATED,
+                },
+            )
+        except IntegrityError:
             obj = cls.get(hash=hash)
-            obj.updated_by = user
+            created = False
+
+        if created:
+            logging.info(f'File {path} added to the database.')
+        else:
             obj.updated = timezone.now()
+            obj.save(update_fields=["updated"])
             logging.info(f'File {path} already exists in the database.')
 
-        except cls.DoesNotExist:
-            obj = cls()
-            obj.creator = user
-            obj.created = timezone.now()
-            obj.collection = collection
-            obj.path = path
-            obj.stat_result = stat_result
-            obj.hash = hash
-            obj.status = status or choices.LOG_FILE_STATUS_CREATED
-            logging.info(f'File {path} added to the database.')
-        
-        obj.save()
         return obj
         
     def __str__(self):

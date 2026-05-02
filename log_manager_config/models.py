@@ -4,17 +4,106 @@ from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from modelcluster.models import ClusterableModel
+from modelcluster.fields import ParentalKey
+from wagtail.models import Orderable
+from wagtail.admin.panels import FieldPanel, InlinePanel
+from wagtailautocomplete.edit_handlers import AutocompletePanel
+
 from collection.models import Collection
 from core.models import CommonControlField
 
-from .exceptions import MultipleFilesPerDayForTheSameDateError, UndefinedCollectionFilesPerDayError
 
 
-class CollectionLogDirectory(CommonControlField):
-    collection = models.ForeignKey(
+class LogManagerCollectionConfig(ClusterableModel, CommonControlField):
+    collection = models.OneToOneField(
         Collection,
         verbose_name=_('Collection'),
-        on_delete=models.DO_NOTHING,
+        on_delete=models.CASCADE,
+        related_name="log_manager_config"
+    )
+    sample_size = models.FloatField(
+        verbose_name=_('Sample Size'),
+        blank=False,
+        null=False,
+        default=0.1,
+    )
+    buffer_size = models.IntegerField(
+        verbose_name=_('Buffer Size'),
+        blank=False,
+        null=False,
+        default=2048,
+    )
+    expected_logs_per_day = models.IntegerField(
+        verbose_name=_('Expected Logs Per Day'),
+        default=1,
+    )
+
+    panels = [
+        AutocompletePanel("collection"),
+        FieldPanel("sample_size"),
+        FieldPanel("buffer_size"),
+        FieldPanel("expected_logs_per_day"),
+        InlinePanel("directories", label=_("Directories")),
+        InlinePanel("emails", label=_("Emails")),
+    ]
+
+    def __str__(self):
+        return f'{self.collection.acron3} Config'
+
+    class Meta:
+        verbose_name = _('Log Manager Collection Config')
+        verbose_name_plural = _('Log Manager Collection Configs')
+
+    @classmethod
+    def load(cls, data, user):
+        for item in data:
+            try:
+                collection = Collection.objects.get(acron3=item.get('acronym'))
+            except Collection.DoesNotExist:
+                logging.warning(f'Collection {item.get("acronym")} not found.')
+                continue
+
+            cls.create_or_update(
+                user=user,
+                collection=collection,
+                sample_size=item.get('sample_size', 0.1),
+                buffer_size=item.get('buffer_size', 2048),
+                expected_logs_per_day=item.get('quantity', 1),
+            )
+
+    @classmethod
+    def create_or_update(
+        cls,
+        user,
+        collection,
+        sample_size,
+        buffer_size,
+        expected_logs_per_day,
+    ):
+        obj, created = cls.objects.get_or_create(collection=collection)
+        if created:
+            obj.creator = user
+            obj.created = timezone.now()
+        
+        obj.updated_by = user
+        obj.updated = timezone.now()
+        obj.sample_size = sample_size
+        obj.buffer_size = buffer_size
+        obj.expected_logs_per_day = expected_logs_per_day
+        obj.save()
+        logging.info(f'Config for {collection.acron3} updated.')
+        return obj
+
+
+
+class CollectionLogDirectory(Orderable, CommonControlField):
+    config = ParentalKey(
+        'LogManagerCollectionConfig',
+        related_name='directories',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
     )
     path = models.CharField(
         verbose_name=_('Path'),
@@ -32,15 +121,22 @@ class CollectionLogDirectory(CommonControlField):
         verbose_name=_('Active'),
         default=True,
     )
+    translator_class = models.CharField(
+        verbose_name=_('URL Translator Class'),
+        blank=False,
+        null=False,
+        default='URLTranslatorClassicSite',
+    )
 
     def __str__(self):
-        return f'{self.collection} - {self.path} - {self.directory_name}'
+        return f'{self.config.collection} - {self.path} - {self.directory_name}'
     
     @classmethod
     def load(cls, data, user):
         for item in data:
             try:
                 collection = Collection.objects.get(acron3=item.get('acronym'))
+                config, _ = LogManagerCollectionConfig.objects.get_or_create(collection=collection)
             except Collection.DoesNotExist:
                 logging.warning(f'Collection {item.get("acronym")} not found.')
                 continue
@@ -48,7 +144,7 @@ class CollectionLogDirectory(CommonControlField):
             logging.info(item)
             cls.create_or_update(
                 user=user,
-                collection=collection,
+                config=config,
                 directory_name=item.get('directory_name'),
                 path=item.get('path'),
                 active=item.get('active', True),
@@ -58,18 +154,18 @@ class CollectionLogDirectory(CommonControlField):
     def create_or_update(
         cls,
         user,
-        collection,
+        config,
         directory_name,
         path,
         active,
     ):
         try:
-            obj = cls.objects.get(collection=collection, path=path)
+            obj = cls.objects.get(config=config, path=path)
         except cls.DoesNotExist:
             obj = cls()
             obj.creator = user
             obj.created = timezone.now()
-            obj.collection = collection
+            obj.config = config
         
         obj.updated_by = user
         obj.updated = timezone.now()
@@ -78,115 +174,25 @@ class CollectionLogDirectory(CommonControlField):
         obj.active = active
      
         obj.save()
-        logging.info(f'{collection.acron3} - {directory_name} - {path}')
+        logging.info(f'{config.collection.acron3} - {directory_name} - {path}')
         return obj
 
     class Meta:
         verbose_name = _('Collection Log Directory')
         verbose_name_plural = _('Collection Log Directories')
         constraints = [
-            models.UniqueConstraint(fields=['collection', 'path'], name='unique_collection_path')
+            models.UniqueConstraint(fields=['config', 'path'], name='unique_config_path')
         ]
 
 
-class CollectionLogFilesPerDay(CommonControlField):
-    collection = models.ForeignKey(
-        Collection,
-        verbose_name=_('Collection'),
-        on_delete=models.DO_NOTHING,
-    )
-    start_date = models.DateField(
-        verbose_name=_('Start Date'),
-        blank=False,
-        null=False,
-    )
-    end_date = models.DateField(
-        verbose_name=_('End Date'),
-        blank=True,
+
+class CollectionEmail(Orderable, CommonControlField):
+    config = ParentalKey(
+        'LogManagerCollectionConfig',
+        related_name='emails',
+        on_delete=models.CASCADE,
         null=True,
-    )
-    quantity = models.IntegerField(
-        verbose_name=_('Quantity'),
-        default=1,
-    )
-
-    def __str__(self):
-        return f'{self.start_date} - {self.quantity}'
-    
-    @classmethod
-    def get_number_of_expected_files_by_day(cls, collection, date):
-        files_by_day = cls.objects.filter(
-            models.Q(collection__acron3=collection) &
-            models.Q(start_date__lte=date) &
-            (models.Q(end_date__gte=date) | models.Q(end_date__isnull=True))
-        )
-
-        if files_by_day.count() > 1:
-            raise MultipleFilesPerDayForTheSameDateError(_("ERROR. Please, set the field end_date for the collection {collection}."))
-
-        if files_by_day.count() == 0:
-            raise UndefinedCollectionFilesPerDayError(_("ERROR. Please, set the number of files per day for the collection {collection}."))
-        
-        return int(files_by_day.get().quantity)
-
-    @classmethod
-    def load(cls, data, user):
-        for item in data:
-            try:
-                collection = Collection.objects.get(acron3=item.get('acronym'))
-            except Collection.DoesNotExist:
-                logging.warning(f'Collection {item.get("acronym")} not found.')
-                continue
-
-            logging.info(item)
-            cls.create_or_update(
-                user=user,
-                collection=collection,
-                start_date=item.get('start_date'),
-                quantity=item.get('quantity'),
-                end_date=item.get('end_date'),
-            )
-
-    @classmethod
-    def create_or_update(
-        cls,
-        user,
-        collection,
-        start_date,
-        quantity,
-        end_date,
-    ):
-        try:
-            obj = cls.objects.get(collection=collection, start_date=start_date)
-        except cls.DoesNotExist:
-            obj = cls()
-            obj.creator = user
-            obj.created = timezone.now()
-            obj.collection = collection
-
-        obj.updated_by = user
-        obj.updated = timezone.now()
-        obj.start_date = start_date
-        obj.quantity = quantity
-        obj.end_date = end_date
-        
-        obj.save()
-        logging.info(f'{collection.acron3} - {start_date} - {quantity}')
-        return obj
-
-    class Meta:
-        verbose_name = _('Collection Log Files Per Day')
-        verbose_name_plural = _('Collection Log Files Per Day')
-        constraints = [
-            models.UniqueConstraint(fields=['collection', 'start_date'], name='unique_collection_start_date')
-        ]
-
-
-class CollectionEmail(CommonControlField):
-    collection = models.ForeignKey(
-        Collection,
-        verbose_name=_('Collection'),
-        on_delete=models.DO_NOTHING,
+        blank=True,
     )
     name = models.CharField(
         verbose_name=_('Name'),
@@ -218,6 +224,7 @@ class CollectionEmail(CommonControlField):
         for item in data:
             try:
                 collection = Collection.objects.get(acron3=item.get('acronym'))
+                config, _ = LogManagerCollectionConfig.objects.get_or_create(collection=collection)
             except Collection.DoesNotExist:
                 logging.warning(f'Collection {item.get("acronym")} not found.')
                 continue
@@ -225,7 +232,7 @@ class CollectionEmail(CommonControlField):
             logging.info(item)
             cls.create_or_update(
                 user=user,
-                collection=collection,
+                config=config,
                 email=item.get('e-mail'),
                 name=item.get('name'),
                 position=item.get('position'),
@@ -236,19 +243,19 @@ class CollectionEmail(CommonControlField):
     def create_or_update(
         cls,
         user,
-        collection,
+        config,
         email,
         name,
         position,
         active,
     ):
         try:
-            obj = cls.objects.get(collection=collection, email=email)
+            obj = cls.objects.get(config=config, email=email)
         except cls.DoesNotExist:
             obj = cls()
             obj.creator = user
             obj.created = timezone.now()
-            obj.collection = collection
+            obj.config = config
             obj.email = email
 
         obj.updated_by = user
@@ -258,213 +265,14 @@ class CollectionEmail(CommonControlField):
         obj.active = active
         
         obj.save()
-        logging.info(f'{collection.acron3} - {name} - {position} - {email}')
+        logging.info(f'{config.collection.acron3} - {name} - {position} - {email}')
         return obj
     
     class Meta:
         verbose_name = _('Collection Email')
         verbose_name_plural = _('Collection Emails')
         constraints = [
-            models.UniqueConstraint(fields=['collection', 'email'], name='unique_collection_email')
+            models.UniqueConstraint(fields=['config', 'email'], name='unique_config_email')
         ]
 
 
-class CollectionValidationParameters(CommonControlField):
-    collection = models.ForeignKey(
-        Collection,
-        verbose_name=_('Collection'),
-        on_delete=models.DO_NOTHING,
-        primary_key=True,
-    )
-    sample_size = models.FloatField(
-        verbose_name=_('Sample Size'),
-        blank=False,
-        null=False,
-        default=0.1,
-    )
-    buffer_size = models.IntegerField(
-        verbose_name=_('Buffer Size'),
-        blank=False,
-        null=False,
-        default=2048,
-    )
-
-    def __str__(self):
-        return f'{self.collection.acron3} - {self.sample_size} - {self.buffer_size}'
-
-    @classmethod
-    def load(cls, data, user):
-        for item in data:
-            try:
-                collection = Collection.objects.get(acron3=item.get('acronym'))
-            except Collection.DoesNotExist:
-                logging.warning(f'Collection {item.get("acronym")} not found.')
-                continue
-
-            logging.info(item)
-            cls.create_or_update(
-                user=user,
-                collection=collection,
-                sample_size=item.get('sample_size'),
-                buffer_size=item.get('buffer_size'),
-            )
-
-    @classmethod
-    def create_or_update(
-        cls,
-        user,
-        collection,
-        sample_size,
-        buffer_size,
-    ):
-        try:
-            obj = cls.objects.get(collection=collection)
-        except cls.DoesNotExist:
-            obj = cls()
-            obj.creator = user
-            obj.created = timezone.now()
-            obj.collection = collection
-
-        obj.updated_by = user
-        obj.updated = timezone.now()
-        obj.sample_size = sample_size
-        obj.buffer_size = buffer_size
-        
-        obj.save()
-        logging.info(f'{collection.acron3} - {sample_size} - {buffer_size}')
-        return obj
-    
-    class Meta:
-        verbose_name = _('Collection Validation Parameters')
-        verbose_name_plural = _('Collection Validation Parameters')
-
-
-class CollectionURLTranslatorClass(CommonControlField):
-    collection = models.ForeignKey(
-        Collection,
-        verbose_name=_('Collection'),
-        on_delete=models.DO_NOTHING,
-    )
-    directory = models.ForeignKey(
-        CollectionLogDirectory,
-        verbose_name=_('Directory'),
-        on_delete=models.DO_NOTHING,
-    )
-    translator_class = models.CharField(
-        verbose_name=_('URL Translator Class'),
-        blank=False,
-        null=False,
-        default='URLTranslatorClassicSite',
-    )
-
-    def __str__(self):
-        return f'{self.collection.acron3} - {self.directory} - {self.translator_class}'
-
-    class Meta:
-        verbose_name = _('Collection URL Translator Class')
-        verbose_name_plural = _('Collection URL Translator Classes')
-        constraints = [
-            models.UniqueConstraint(fields=['collection', 'directory'], name='unique_collection_directory')
-        ]
-
-    @classmethod
-    def load(cls, data, user):
-        for item in data:
-            try:
-                collection = Collection.objects.get(acron3=item.get('acronym'))
-            except Collection.DoesNotExist:
-                logging.warning(f'Collection {item.get("acronym")} not found.')
-                continue
-
-            try:
-                directory = CollectionLogDirectory.objects.get(collection=collection, path=item.get('path'))
-                logging.info(item)
-                cls.create_or_update(
-                    user=user,
-                    collection=collection,
-                    directory=directory,
-                    translator_class=item.get('translator_class'),
-                )
-            except CollectionLogDirectory.DoesNotExist:
-                logging.warning(f'Directory {item.get("path")} not found.')
-                continue
-
-    @classmethod
-    def create_or_update(
-        cls,
-        user,
-        collection,
-        directory,
-        translator_class,
-    ):
-        try:
-            obj = cls.objects.get(collection=collection)
-        except cls.DoesNotExist:
-            obj = cls()
-            obj.creator = user
-            obj.created = timezone.now()
-            obj.collection = collection
-            obj.directory = directory
-
-        obj.updated_by = user
-        obj.updated = timezone.now()
-        obj.translator_class = translator_class
-        
-        obj.save()
-        logging.info(f'{collection.acron3} - {directory.path} - {translator_class}')
-        return obj
-    
-
-class SupportedLogFile(CommonControlField):
-    file_extension = models.CharField(
-        verbose_name=_('File Extension'),
-        max_length=255, 
-        unique=True,
-        blank=False,
-        null=False,
-    )
-    description = models.TextField(
-        verbose_name=_('Description'),
-        blank=True,
-        null=True,
-    )
-
-    def __str__(self):
-        return f'{self.file_extension}'
-
-    @classmethod
-    def load(cls, data, user):
-        for item in data:
-            logging.info(item)
-            cls.create_or_update(
-                user=user,
-                file_extension=item.get('file_extension'),
-                description=item.get('description'),
-            )
-
-    @classmethod
-    def create_or_update(
-        cls,
-        user,
-        file_extension,
-        description,
-    ):
-        try:
-            obj = cls.objects.get(file_extension=file_extension)
-        except cls.DoesNotExist:
-            obj = cls()
-            obj.creator = user
-            obj.created = timezone.now()
-
-        obj.updated_by = user
-        obj.updated = timezone.now()
-        obj.file_extension = file_extension
-        obj.description = description
-        
-        obj.save()
-        logging.info(f'{file_extension}')
-        return obj
-    
-    class Meta:
-        verbose_name = _('Supported Log File')
-        verbose_name_plural = _('Supported Log Files')
