@@ -1,19 +1,13 @@
 import logging
 
-from django.contrib.auth import get_user_model
-from django.utils import timezone
 from django.utils.translation import gettext as _
 
 from config import celery_app
-from core.utils.utils import _get_user
 
 from . import constants, models, utils
 
-
-User = get_user_model()
-
-@celery_app.task(bind=True, name=_('Load robots data'))
-def task_load_robots(self, url_robots=None, user_id=None, username=None):
+@celery_app.task(bind=True, name=_('[Resources] Load Robots Data'))
+def task_load_robots(self, url_robots=None):
     """
     Load robots from a given URL and save them to the database.
     This function fetches robot data from a specified URL (or a default URL if none is provided),
@@ -32,8 +26,6 @@ def task_load_robots(self, url_robots=None, user_id=None, username=None):
         - Error if there is an issue downloading or saving the robots.
         - Debug information for each robot saved.
     """
-    user = _get_user(self.request, username=username, user_id=user_id)
-    
     if not url_robots:
         url_robots = constants.DEFAULT_COUNTER_ROBOTS_URL
         logging.warning(f'No robots URL provided. Using default: {url_robots}')
@@ -45,43 +37,63 @@ def task_load_robots(self, url_robots=None, user_id=None, username=None):
         return False
 
     cleaned_robots_data = utils.clean_robots_list(robots_data)
+    fetched_patterns = set()
 
     try:
         for r_str in cleaned_robots_data:
             pattern = r_str.get('pattern')
             last_changed = r_str.get('last_changed')
+            fetched_patterns.add(pattern)
 
-            r_obj, created = models.RobotUserAgent.objects.get_or_create(pattern=pattern, last_changed=last_changed)
+            r_obj = models.RobotUserAgent.objects.filter(pattern=pattern).first()
+            created = r_obj is None
 
             if created:
-                r_obj.creator = user
-
-            r_obj.updated = timezone.now()
-            r_obj.updated_by = user
+                r_obj = models.RobotUserAgent(
+                    pattern=pattern,
+                    source_counter=True,
+                    source_scielo=False,
+                )
+            r_obj.source_counter = True
+            r_obj.is_active = True
+            r_obj.source_url = url_robots
+            r_obj.last_changed = last_changed
 
             r_obj.save()
             logging.debug(f'Robot saved: {r_obj}')
+
+        stale_counter_patterns = models.RobotUserAgent.objects.filter(
+            source_counter=True
+        ).exclude(pattern__in=fetched_patterns)
+
+        for r_obj in stale_counter_patterns:
+            r_obj.source_counter = False
+            r_obj.source_url = None
+            r_obj.last_changed = None
+            if not r_obj.source_scielo:
+                r_obj.is_active = False
+            r_obj.save()
+            logging.debug(f'Robot deactivated or detached from COUNTER source: {r_obj}')
+
         return True
 
     except Exception as e:
         logging.error(f'Error saving robots: {e}')
+        return False
 
 
-@celery_app.task(bind=True, name=_('Load geolocation and country data'))
-def task_load_geoip(self, url_geoip=None, user_id=None, username=None, validate=True):
+@celery_app.task(bind=True, name=_('[Resources] Load Geolocation Data'))
+def task_load_geoip(self, url_geoip=None, validate=True):
     """
     Load GeoIP data from a specified URL, validate it, and save it to the database.
     Args:
         url_geoip (str, optional): The URL to download the GeoIP data from. Defaults to None.
-        user_id (int, optional): The ID of the user performing the task. Defaults to None.
-        username (str, optional): The username of the user performing the task. Defaults to None.
         validate (bool, optional): Whether to validate the GeoIP data. Defaults to True.
     Returns:
         bool: True if the GeoIP data was successfully loaded and saved, False otherwise.
     Raises:
         Exception: If there is an error downloading, decompressing, or validating the GeoIP data.
     """
-    user = _get_user(self.request, username=username, user_id=user_id)
 
     if not url_geoip:
         url_geoip = constants.DEFAULT_MMDB_URL
@@ -115,10 +127,6 @@ def task_load_geoip(self, url_geoip=None, user_id=None, username=None, validate=
     except models.MMDB.DoesNotExist:
         mmdb_obj = models.MMDB.objects.create(id=mmdb_hash, data=mmdb_data)
         mmdb_obj.url = url_geoip or constants.DEFAULT_MMDB_URL
-        mmdb_obj.creator = user
-
-    mmdb_obj.updated = timezone.now()
-    mmdb_obj.updated_by = user
 
     mmdb_obj.save()
     logging.debug(f'GeoIP data has been saved: {mmdb_obj}')
