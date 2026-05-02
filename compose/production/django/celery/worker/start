@@ -22,4 +22,14 @@ celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_medium -n wo
 # Worker para arg bol cub data ecu per preprints pry rve spa sss sza ury wid (coleções pequenas)
 celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small -n worker.parse_small@%h &
 
+# Workers seriais adicionais para backfill paralelo de colecoes pequenas
+celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_1 -n worker.parse_small_1@%h &
+celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_2 -n worker.parse_small_2@%h &
+celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_3 -n worker.parse_small_3@%h &
+celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_4 -n worker.parse_small_4@%h &
+celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_5 -n worker.parse_small_5@%h &
+celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_6 -n worker.parse_small_6@%h &
+celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_7 -n worker.parse_small_7@%h &
+celery -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_8 -n worker.parse_small_8@%h &
+
 wait

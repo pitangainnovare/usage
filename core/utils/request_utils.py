@@ -1,8 +1,6 @@
 import logging
-import re
 
 import requests
-from langcodes import standardize_tag, tag_is_valid
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -15,13 +13,6 @@ from django.contrib.auth import get_user_model
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-
-
-def language_iso(code):
-    code = re.split(r"-|_", code)[0] if code else ""
-    if tag_is_valid(code):
-        return standardize_tag(code)
-    return ""
 
 
 class RetryableError(Exception):

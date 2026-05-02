@@ -11,10 +11,15 @@ services:
       - mailhog
     volumes:
       - .:/app:z
-      - ../scms_data/scielo_usage/data/logs:/app/logs
+      - /mnt/pidata2/pi/scl/logs:/app/logs
+      # Uncomment to use local SciELO lib repos for development:
+      # - ../scielo_log_validator:/app/scielo_log_validator:z
+      # - ../scielo_usage_counter:/app/scielo_usage_counter:z
     env_file:
       - ./.envs/.local/.django
       - ./.envs/.local/.postgres
+    environment:
+      - USE_LOCAL_SCIELO_LIBS=0
     ports:
       - "8009:8000"
     command: /start
@@ -40,7 +45,7 @@ services:
       - "8029:8025"
 
   redis:
-    image: redis:6
+    image: redis:8
     container_name: scielo_usage_local_redis
     ports:
       - "6399:6379"

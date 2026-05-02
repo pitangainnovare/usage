@@ -15,3 +15,13 @@ CELERY_BROKER_URL=redis://redis:6379/0
 # ------------------------------------------------------------------------------
 CELERY_FLOWER_USER=PhFRdLexbrsBvrrbSXxjcMMOcVOavCrZ
 CELERY_FLOWER_PASSWORD=QgScyefPrYhHgO6onW61u0nazc5xdBuP4sM7jMRrBBFuA2RjsFhZLp7xbVYZbrwR
+
+# OpenSearch
+# ------------------------------------------------------------------------------
+OPENSEARCH_URL=http://172.20.0.1:9200
+OPENSEARCH_BASIC_AUTH=admin,UmaSenhaForte123!
+OPENSEARCH_VERIFY_CERTS=False
+
+# SciELO Books API
+--------------------------------------------------------------------------------
+SCIELO_BOOKS_BASE_URL=http://192.168.2.154:31735

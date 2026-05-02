@@ -21,4 +21,14 @@ watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concu
 # Worker para arg bol cub data ecu per preprints pry rve spa sss sza ury wid
 watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small -n worker.parse_small@%h &
 
+# Workers seriais adicionais para backfill paralelo de colecoes pequenas
+watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_1 -n worker.parse_small_1@%h &
+watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_2 -n worker.parse_small_2@%h &
+watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_3 -n worker.parse_small_3@%h &
+watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_4 -n worker.parse_small_4@%h &
+watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_5 -n worker.parse_small_5@%h &
+watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_6 -n worker.parse_small_6@%h &
+watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_7 -n worker.parse_small_7@%h &
+watchgod celery.__main__.main --args -A config.celery_app worker -l INFO --concurrency=1 -Q parse_small_8 -n worker.parse_small_8@%h &
+
 wait

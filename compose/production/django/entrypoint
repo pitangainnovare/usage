@@ -16,6 +16,20 @@ if [ -z "${POSTGRES_USER}" ]; then
 fi
 export DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
 
+if [ "${USE_LOCAL_SCIELO_LIBS:-0}" = "1" ]; then
+  for path in /app/scielo_log_validator /app/scielo_usage_counter; do
+    if [ ! -f "${path}/setup.py" ] && [ ! -f "${path}/pyproject.toml" ]; then
+      >&2 echo "Local lib path not ready: ${path}"
+      exit 1
+    fi
+  done
+
+  >&2 echo "Installing local SciELO libs from mounted repositories..."
+  pip install --root-user-action=ignore --no-cache-dir --no-build-isolation --no-deps \
+    -e /app/scielo_log_validator \
+    -e /app/scielo_usage_counter
+fi
+
 postgres_ready() {
 python << END
 import sys
