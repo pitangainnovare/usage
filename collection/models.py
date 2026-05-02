@@ -9,7 +9,7 @@ from wagtailautocomplete.edit_handlers import AutocompletePanel
 
 from core.forms import CoreAdminModelForm
 from core.models import CommonControlField, Language, TextWithLang
-from core.utils.utils import fetch_data
+from core.utils.request_utils import fetch_data
 
 from . import choices
 
