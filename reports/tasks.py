@@ -1,4 +1,5 @@
 import logging
+import re
 from collections import defaultdict
 
 from django.core.mail import send_mail
@@ -24,7 +25,6 @@ def _extract_date_from_log_file(lf):
         return date_utils.get_date_obj(probably_date)
 
     try:
-        import re
         match = re.search(r"(\d{4}-\d{2}-\d{2})", lf.path)
         if match:
             return date_utils.get_date_obj(match.group(1))

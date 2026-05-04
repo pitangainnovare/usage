@@ -102,6 +102,23 @@ class ParseLogsTaskTests(TestCase):
         mocked_parse_logs_apply_async.assert_not_called()
         mocked_wait_apply_async.assert_called_once()
 
+    def test_wait_parse_logs_wave_preserves_queue_name(self):
+        job = DailyMetricJob.objects.create(
+            collection=self.collection,
+            access_date=date(2012, 3, 10),
+            status=DailyMetricJob.STATUS_EXPORTING,
+        )
+
+        with patch("metrics.tasks.task_wait_parse_logs_wave.apply_async") as mocked_wait_apply_async:
+            result = tasks.task_wait_parse_logs_wave.run(
+                wave_log_hashes=[job.pk],
+                collections=["books"],
+                queue_name="parse_small",
+            )
+
+        self.assertEqual(result, {"wave_completed": False, "reexecution_enqueued": False})
+        self.assertEqual(mocked_wait_apply_async.call_args.kwargs["queue"], "parse_small")
+
 
 class ResumeDailyMetricJobTests(TestCase):
     def setUp(self):

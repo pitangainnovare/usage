@@ -205,7 +205,10 @@ def _schedule_parse_logs_reexecution(
     if robots_source is not None:
         kwargs["robots_source"] = robots_source
 
-    task_wait_parse_logs_wave.apply_async(kwargs=kwargs)
+    apply_kwargs = {"kwargs": kwargs}
+    if queue_name:
+        apply_kwargs["queue"] = queue_name
+    task_wait_parse_logs_wave.apply_async(**apply_kwargs)
     return True
 
 
@@ -257,10 +260,13 @@ def task_wait_parse_logs_wave(
         if robots_source is not None:
             kwargs["robots_source"] = robots_source
 
-        task_wait_parse_logs_wave.apply_async(
-            kwargs=kwargs,
-            countdown=poll_interval_seconds,
-        )
+        apply_kwargs = {
+            "kwargs": kwargs,
+            "countdown": poll_interval_seconds,
+        }
+        if queue_name:
+            apply_kwargs["queue"] = queue_name
+        task_wait_parse_logs_wave.apply_async(**apply_kwargs)
         return {"wave_completed": False, "reexecution_enqueued": False}
 
     kwargs = {
@@ -282,5 +288,8 @@ def task_wait_parse_logs_wave(
     if robots_source is not None:
         kwargs["robots_source"] = robots_source
 
-    task_parse_logs.apply_async(kwargs=kwargs)
+    apply_kwargs = {"kwargs": kwargs}
+    if queue_name:
+        apply_kwargs["queue"] = queue_name
+    task_parse_logs.apply_async(**apply_kwargs)
     return {"wave_completed": True, "reexecution_enqueued": True}

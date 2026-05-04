@@ -8,6 +8,8 @@ from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
 
+from metrics.models import DailyMetricJob
+
 
 def get_daily_payload_root():
     return Path(settings.MEDIA_ROOT) / "metrics" / "daily_payloads"
@@ -61,8 +63,6 @@ def delete_payload(storage_path):
 
 
 def cleanup_exported_payloads(collections=None, older_than_days=7):
-    from metrics.models import DailyMetricJob
-
     root = get_daily_payload_root()
     if not root.exists():
         return 0

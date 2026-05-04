@@ -56,3 +56,34 @@ class ValidateLogFilesTaskTests(TestCase):
 
         self.assertIsNone(result)
         mocked_signature.assert_not_called()
+
+    def test_validate_log_files_routes_parse_callback_to_collection_parse_queue(self):
+        with patch("metrics.tasks.task_parse_logs.apply_async") as mocked_apply_async:
+            tasks.task_validate_log_files.run(
+                collections=["books"],
+                from_date="2024-02-01",
+                until_date="2024-02-02",
+                trigger_parse=True,
+            )
+
+        mocked_apply_async.assert_called_once()
+        self.assertEqual(mocked_apply_async.call_args.kwargs["queue"], "parse_small")
+        self.assertEqual(
+            mocked_apply_async.call_args.kwargs["kwargs"]["queue_name"],
+            "parse_small",
+        )
+
+    def test_validate_log_files_routes_each_collection_parse_to_its_queue(self):
+        with patch("metrics.tasks.task_parse_logs.apply_async") as mocked_apply_async:
+            tasks.task_validate_log_files.run(
+                collections=["books", "scl"],
+                from_date="2024-02-01",
+                until_date="2024-02-02",
+                trigger_parse=True,
+            )
+
+        calls = {
+            call.kwargs["kwargs"]["collections"][0]: call.kwargs["queue"]
+            for call in mocked_apply_async.call_args_list
+        }
+        self.assertEqual(calls, {"books": "parse_small", "scl": "parse_xlarge"})

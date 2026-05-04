@@ -125,7 +125,7 @@ class CollectionLogDirectory(Orderable, CommonControlField):
         verbose_name=_('URL Translator Class'),
         blank=False,
         null=False,
-        default='URLTranslatorClassicSite',
+        default='classic',
     )
 
     def __str__(self):
@@ -148,6 +148,7 @@ class CollectionLogDirectory(Orderable, CommonControlField):
                 directory_name=item.get('directory_name'),
                 path=item.get('path'),
                 active=item.get('active', True),
+                translator_class=item.get('translator_class', 'classic'),
             )
 
     @classmethod
@@ -158,6 +159,7 @@ class CollectionLogDirectory(Orderable, CommonControlField):
         directory_name,
         path,
         active,
+        translator_class='classic',
     ):
         try:
             obj = cls.objects.get(config=config, path=path)
@@ -172,6 +174,7 @@ class CollectionLogDirectory(Orderable, CommonControlField):
         obj.directory_name = directory_name
         obj.path = path
         obj.active = active
+        obj.translator_class = translator_class or 'classic'
      
         obj.save()
         logging.info(f'{config.collection.acron3} - {directory_name} - {path}')
@@ -274,5 +277,4 @@ class CollectionEmail(Orderable, CommonControlField):
         constraints = [
             models.UniqueConstraint(fields=['config', 'email'], name='unique_config_email')
         ]
-
 
