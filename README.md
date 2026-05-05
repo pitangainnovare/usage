@@ -98,6 +98,8 @@ Runtime configuration is loaded from `.envs/.local/` or `.envs/.production/` thr
 | `OPENSEARCH_INDEX_NAME` | `usage` | OpenSearch index prefix |
 | `OPENSEARCH_BASIC_AUTH` | `admin:admin` | OpenSearch basic auth credentials |
 | `OPENSEARCH_VERIFY_CERTS` | `False` | Verify SSL certificates for OpenSearch connections |
+| `COUNTER_ROBOTS_URL` | `https://raw.githubusercontent.com/atmire/COUNTER-Robots/master/COUNTER_Robots_list.json` | COUNTER robot user-agent list URL used by the resources loader |
+| `MMDB_URL_TEMPLATE` | `https://download.db-ip.com/free/dbip-country-lite-{year}-{month:02d}.mmdb.gz` | DB-IP GeoIP MMDB gzip URL template; `{year}` and `{month}` are filled from the current and previous month |
 | `USE_LOCAL_SCIELO_LIBS` | `0` | Mount local `scielo_log_validator` and `scielo_usage_counter` repos for development |
 | `DJANGO_SETTINGS_MODULE` | `config.settings.local` | Django settings module |
 | `REDIS_URL` | — | Redis connection URL for Celery |

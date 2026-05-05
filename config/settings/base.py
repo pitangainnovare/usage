@@ -420,6 +420,23 @@ OPENSEARCH_VERIFY_CERTS = env.bool(
     default=False,
 )
 
+# Resources
+# ------------------------------------------------------------------------------
+COUNTER_ROBOTS_URL = env(
+    "COUNTER_ROBOTS_URL",
+    default=(
+        "https://raw.githubusercontent.com/atmire/COUNTER-Robots/master/"
+        "COUNTER_Robots_list.json"
+    ),
+)
+MMDB_URL_TEMPLATE = env(
+    "MMDB_URL_TEMPLATE",
+    default=(
+        "https://download.db-ip.com/free/"
+        "dbip-country-lite-{year}-{month:02d}.mmdb.gz"
+    ),
+)
+
 # Collectors configuration
 # ------------------------------------------------------------------------------
 # ArticleMeta

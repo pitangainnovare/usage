@@ -1,12 +1,13 @@
-import logging
 import gzip
 import io
-import requests
+import logging
 import tempfile
-
+from datetime import date
 from time import sleep
 
 import geoip2.database
+import requests
+from django.conf import settings
 
 
 def fetch_data(url, data_type='json', max_retries=5, sleep_time=30):
@@ -99,3 +100,28 @@ def validate_geoip_data(data):
     else:
         reader.close()
         return True
+
+
+def resolve_mmdb_url():
+    """
+    Return DB-IP MMDB candidate URLs for the current and previous month.
+
+    The DB-IP free database is published monthly. This helper returns:
+        [current_month_url, previous_month_url]
+
+    The caller should try each URL in order and use the first one that
+    succeeds, providing a natural fallback when the current-month file
+    has not yet been published.
+    """
+    today = date.today()
+    current_url = settings.MMDB_URL_TEMPLATE.format(year=today.year, month=today.month)
+
+    if today.month == 1:
+        prev_url = settings.MMDB_URL_TEMPLATE.format(year=today.year - 1, month=12)
+    else:
+        prev_url = settings.MMDB_URL_TEMPLATE.format(
+            year=today.year,
+            month=today.month - 1,
+        )
+
+    return [current_url, prev_url]

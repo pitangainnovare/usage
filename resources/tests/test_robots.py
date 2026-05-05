@@ -1,8 +1,9 @@
+from datetime import date
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
-from resources import models, tasks
+from resources import models, tasks, utils
 
 
 class RobotUserAgentModelTests(TestCase):
@@ -67,6 +68,30 @@ class RobotUserAgentModelTests(TestCase):
 class LoadRobotsTaskTests(TestCase):
 
     @patch("resources.tasks.utils.fetch_data")
+    @override_settings(COUNTER_ROBOTS_URL="https://settings.example.org/robots.json")
+    def test_task_load_robots_uses_settings_url_when_not_provided(
+        self,
+        mock_fetch_data,
+    ):
+        mock_fetch_data.return_value = [
+            {"pattern": "CounterBot", "last_changed": "2025-01-15"},
+        ]
+
+        result = tasks.task_load_robots.run()
+
+        self.assertTrue(result)
+        mock_fetch_data.assert_called_once_with(
+            "https://settings.example.org/robots.json",
+            data_type="json",
+        )
+
+        counter_bot = models.RobotUserAgent.objects.get(pattern="CounterBot")
+        self.assertEqual(
+            counter_bot.source_url,
+            "https://settings.example.org/robots.json",
+        )
+
+    @patch("resources.tasks.utils.fetch_data")
     def test_task_load_robots_marks_counter_source_and_deactivates_stale_counter_entries(
         self,
         mock_fetch_data,
@@ -111,3 +136,23 @@ class LoadRobotsTaskTests(TestCase):
         self.assertFalse(stale_counter.is_active)
         self.assertIsNone(stale_counter.source_url)
         self.assertIsNone(stale_counter.last_changed)
+
+
+class GeoIPUtilsTests(TestCase):
+    @override_settings(
+        MMDB_URL_TEMPLATE="https://example.org/dbip-{year}-{month:02d}.mmdb.gz"
+    )
+    @patch("resources.utils.date")
+    def test_resolve_mmdb_url_returns_current_and_previous_month_from_settings(
+        self,
+        mock_date,
+    ):
+        mock_date.today.return_value = date(2026, 5, 5)
+
+        self.assertEqual(
+            utils.resolve_mmdb_url(),
+            [
+                "https://example.org/dbip-2026-05.mmdb.gz",
+                "https://example.org/dbip-2026-04.mmdb.gz",
+            ],
+        )
