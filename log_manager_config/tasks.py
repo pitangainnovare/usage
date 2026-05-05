@@ -1,5 +1,4 @@
 from django.conf import settings
-from django.utils.translation import gettext as _
 
 from config import celery_app
 from config.collections import COLLECTION_SIZE_SAMPLE_MAP, LOG_MANAGER_SEED_DATA
@@ -8,7 +7,7 @@ from core.utils.request_utils import _get_user
 from . import models
 
 
-@celery_app.task(bind=True, name=_('[Log Pipeline] Load Log Manager Settings (Seed)'))
+@celery_app.task(bind=True, name='[Log Pipeline] Load Log Manager Settings (Seed)')
 def task_load_log_manager_collection_settings(self, data=None, user_id=None, username=None):
     user = _get_user(self.request, username=username, user_id=user_id)
 

@@ -1,7 +1,9 @@
+import inspect
 import json
 
 from celery import current_app
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
 from django.utils.translation import gettext as _
 from wagtail.admin import messages
 
@@ -26,10 +28,12 @@ def task_run(request):
             request,
             _("Task '{0}' not found in the Celery registry.").format(p_task.task),
         )
-        return redirect(request.META.get("HTTP_REFERER"))
+        return redirect(request.META.get("HTTP_REFERER") or reverse("wagtailadmin_home"))
 
     kwargs = json.loads(p_task.kwargs)
-    kwargs["user_id"] = request.user.id
+    sig = inspect.signature(task.run)
+    if "user_id" in sig.parameters:
+        kwargs["user_id"] = request.user.id
 
     task.apply_async(
         args=json.loads(p_task.args),
@@ -40,4 +44,4 @@ def task_run(request):
 
     messages.success(request, _("Task {0} was successfully run").format(p_task.name))
 
-    return redirect(request.META.get("HTTP_REFERER"))
+    return redirect(request.META.get("HTTP_REFERER") or reverse("wagtailadmin_home"))

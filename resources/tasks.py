@@ -1,12 +1,13 @@
 import logging
 
-from django.utils.translation import gettext as _
+from django.conf import settings
 
 from config import celery_app
 
-from . import constants, models, utils
+from . import models, utils
 
-@celery_app.task(bind=True, name=_('[Resources] Load Robots Data'))
+
+@celery_app.task(bind=True, name='[Resources] Load Robots Data')
 def task_load_robots(self, url_robots=None):
     """
     Load robots from a given URL and save them to the database.
@@ -27,7 +28,7 @@ def task_load_robots(self, url_robots=None):
         - Debug information for each robot saved.
     """
     if not url_robots:
-        url_robots = constants.DEFAULT_COUNTER_ROBOTS_URL
+        url_robots = settings.COUNTER_ROBOTS_URL
         logging.warning(f'No robots URL provided. Using default: {url_robots}')
 
     try:
@@ -82,27 +83,45 @@ def task_load_robots(self, url_robots=None):
         return False
 
 
-@celery_app.task(bind=True, name=_('[Resources] Load Geolocation Data'))
+@celery_app.task(bind=True, name='[Resources] Load Geolocation Data')
 def task_load_geoip(self, url_geoip=None, validate=True):
     """
     Load GeoIP data from a specified URL, validate it, and save it to the database.
+
+    When ``url_geoip`` is not provided the task resolves the URL automatically:
+    it tries the current month first and, if the file is not yet available,
+    falls back to the previous month.
+
     Args:
-        url_geoip (str, optional): The URL to download the GeoIP data from. Defaults to None.
+        url_geoip (str, optional): Explicit URL to download. Defaults to None
+            (auto-resolved for the current/previous month).
         validate (bool, optional): Whether to validate the GeoIP data. Defaults to True.
     Returns:
         bool: True if the GeoIP data was successfully loaded and saved, False otherwise.
-    Raises:
-        Exception: If there is an error downloading, decompressing, or validating the GeoIP data.
     """
+    if url_geoip:
+        candidates = [url_geoip]
+    else:
+        candidates = utils.resolve_mmdb_url()
+        logging.info('No GeoIP URL provided. Will try candidates: %s', candidates)
 
-    if not url_geoip:
-        url_geoip = constants.DEFAULT_MMDB_URL
-        logging.warning(f'No GeoIP URL provided. Using default: {url_geoip}')
-                                                                  
-    try:
-        data = utils.fetch_data(url_geoip, data_type='content')
-    except Exception as e:
-        logging.error(f'Error downloading GeoIP: {e}')
+    data = None
+    resolved_url = None
+    for url in candidates:
+        try:
+            data = utils.fetch_data(url, data_type='content')
+            resolved_url = url
+            logging.info('GeoIP data downloaded from: %s', url)
+            break
+        except Exception as e:
+            logging.warning(
+                'Failed to download GeoIP from %s: %s. Trying next candidate.', url, e
+            )
+
+    if data is None:
+        logging.error(
+            'Could not download GeoIP data from any candidate URL: %s', candidates
+        )
         return False
 
     try:
@@ -119,16 +138,16 @@ def task_load_geoip(self, url_geoip=None, validate=True):
             return False
 
     mmdb_hash = models.MMDB.compute_hash(mmdb_data)
-    
-    try:    
+
+    try:
         mmdb_obj = models.MMDB.objects.get(id=mmdb_hash)
         logging.debug(f'GeoIP data already exists: {mmdb_obj}')
 
     except models.MMDB.DoesNotExist:
         mmdb_obj = models.MMDB.objects.create(id=mmdb_hash, data=mmdb_data)
-        mmdb_obj.url = url_geoip or constants.DEFAULT_MMDB_URL
+        mmdb_obj.url = resolved_url
 
     mmdb_obj.save()
-    logging.debug(f'GeoIP data has been saved: {mmdb_obj}')
-    
+    logging.info('GeoIP data saved (url=%s, hash=%s)', resolved_url, mmdb_hash)
+
     return True

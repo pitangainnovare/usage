@@ -1,6 +1,5 @@
 import logging
 
-from django.utils.translation import gettext as _
 from django.conf import settings
 
 from collection.models import Collection
@@ -104,7 +103,7 @@ def load_sources_from_scielo_books(
     return True
 
 
-@celery_app.task(bind=True, name=_("[Metadata] Sync Sources (Article Meta)"), queue="load")
+@celery_app.task(bind=True, name="[Metadata] Sync Sources (Article Meta)", queue="load")
 def task_load_sources_from_article_meta(
     self,
     collections=None,
@@ -122,7 +121,7 @@ def task_load_sources_from_article_meta(
     )
 
 
-@celery_app.task(bind=True, name=_("[Metadata] Sync Sources (SciELO Books)"), queue="load")
+@celery_app.task(bind=True, name="[Metadata] Sync Sources (SciELO Books)", queue="load")
 def task_load_sources_from_scielo_books(
     self,
     collection="books",

@@ -34,7 +34,7 @@ def _extract_date_from_log_file(lf):
     return None
 
 
-@celery_app.task(bind=True, name=_("[Reports] Populate All Reports"))
+@celery_app.task(bind=True, name="[Reports] Populate All Reports")
 def task_populate_all_reports(self, year=None, collection_acron=None):
     qs = LogFile.objects.select_related("collection")
     if collection_acron:
@@ -120,7 +120,7 @@ def _upsert_reports(model_class, data):
 
 @celery_app.task(
     bind=True,
-    name=_("[Reports] Generate Log Report Summary (Manual)"),
+    name="[Reports] Generate Log Report Summary (Manual)",
     queue="load",
 )
 def task_log_files_count_status_report(

@@ -3,7 +3,6 @@ import os
 
 from celery import chord
 from django.conf import settings
-from django.utils.translation import gettext as _
 
 from collection.models import Collection
 from config import celery_app
@@ -19,7 +18,7 @@ LOGFILE_STAT_RESULT_CTIME_INDEX = 9
 
 
 @celery_app.task(
-    bind=True, name=_("[Log Pipeline] 1. Search Logs (Manual)"), queue="load"
+    bind=True, name="[Log Pipeline] 1. Search Logs (Manual)", queue="load"
 )
 def task_search_log_files(
     self,
@@ -100,7 +99,7 @@ def task_search_log_files(
 
 @celery_app.task(
     bind=True,
-    name=_("[Log Pipeline] 2. Validate Logs (Manual)"),
+    name="[Log Pipeline] 2. Validate Logs (Manual)",
     timelimit=-1,
     queue="load",
 )
@@ -183,7 +182,7 @@ def task_validate_log_files(
 
 @celery_app.task(
     bind=True,
-    name=_("[Log Pipeline] Validate Single Log File (Auto)"),
+    name="[Log Pipeline] Validate Single Log File (Auto)",
     timelimit=-1,
     queue="load",
 )
@@ -219,7 +218,7 @@ def task_validate_log_file(self, log_file_hash, user_id=None, username=None):
     log_file.save()
 
 
-@celery_app.task(bind=True, name=_("[Log Pipeline] Daily Routine (Auto)"), queue="load")
+@celery_app.task(bind=True, name="[Log Pipeline] Daily Routine (Auto)", queue="load")
 def task_daily_log_ingestion_pipeline(self):
     """
     Start the daily Search -> Validate -> Parse chain with default parameters.
