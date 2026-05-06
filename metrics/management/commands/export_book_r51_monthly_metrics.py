@@ -5,13 +5,14 @@ from pathlib import Path
 
 from device_detector import DeviceDetector
 from django.core.management.base import BaseCommand, CommandError
+from scielo_usage_counter.translator.books import URLTranslatorBooksSite
 
 from collection.models import Collection
 from document.models import Document
-from metrics.counter import access, documents as index_docs
+from metrics.counter import access
+from metrics.counter import documents as index_docs
 from resources.models import MMDB, RobotUserAgent
 from scielo_usage_counter import log_handler, url_translator
-from scielo_usage_counter.translator.books import URLTranslatorBooksSite
 from source.models import Source
 
 
@@ -160,7 +161,9 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Item CSV written to {item_output}"))
         self.stdout.write(self.style.SUCCESS(f"Title CSV written to {title_output}"))
         if summary_output:
-            self.stdout.write(self.style.SUCCESS(f"Summary JSON written to {summary_output}"))
+            self.stdout.write(
+                self.style.SUCCESS(f"Summary JSON written to {summary_output}")
+            )
 
     def _parse_file(self, path, parser, utm, collection, ua_cache, results):
         stats = defaultdict(int)
@@ -213,11 +216,13 @@ class Command(BaseCommand):
 
                 if is_bunny:
                     local_datetime = parser.format_date(data.get("unix_ts"), None)
-                    country_code = data.get("country") or parser.geoip.ip_to_country_code(
-                        ip_address
-                    )
+                    country_code = data.get(
+                        "country"
+                    ) or parser.geoip.ip_to_country_code(ip_address)
                 else:
-                    local_datetime = parser.format_date(data.get("date"), data.get("timezone"))
+                    local_datetime = parser.format_date(
+                        data.get("date"), data.get("timezone")
+                    )
                     country_code = parser.geoip.ip_to_country_code(ip_address)
 
                 if not local_datetime:
@@ -295,20 +300,23 @@ class Command(BaseCommand):
         title_documents = {}
 
         for doc in documents["month"].values():
-            year_month = doc.get("access_month", "")
-            scope = doc.get("metric_scope", "item")
+            access = doc.get("access") or {}
+            counter = doc.get("counter") or {}
+            document = doc.get("document") or {}
+            year_month = access.get("month", "")
+            scope = counter.get("metric_scope", "item")
             if scope == "title":
+                title_id = document.get("id")
                 key = (
                     year_month,
-                    doc.get("title_pid_generic") or doc.get("pid_generic"),
-                    doc.get("document_type"),
+                    title_id,
+                    document.get("type"),
                 )
                 if key not in title_documents:
                     title_documents[key] = {
                         "year_month": year_month,
-                        "title_pid_generic": doc.get("title_pid_generic")
-                        or doc.get("pid_generic"),
-                        "document_type": doc.get("document_type"),
+                        "title_pid_generic": title_id,
+                        "document_type": document.get("type"),
                         "total_requests": 0,
                         "total_investigations": 0,
                         "unique_requests": 0,
@@ -324,18 +332,20 @@ class Command(BaseCommand):
                 )
                 continue
 
+            item_id = document.get("id")
+            title_id = document.get("parent_id") or item_id
             key = (
                 year_month,
-                doc.get("title_pid_generic"),
-                doc.get("pid_generic"),
-                doc.get("document_type"),
+                title_id,
+                item_id,
+                document.get("type"),
             )
             if key not in item_documents:
                 item_documents[key] = {
                     "year_month": year_month,
-                    "title_pid_generic": doc.get("title_pid_generic"),
-                    "segment_pid_generic": doc.get("pid_generic"),
-                    "document_type": doc.get("document_type"),
+                    "title_pid_generic": title_id,
+                    "segment_pid_generic": item_id,
+                    "document_type": document.get("type"),
                     "total_requests": 0,
                     "total_investigations": 0,
                     "unique_requests": 0,
@@ -390,7 +400,9 @@ class Command(BaseCommand):
                         "total_item_requests": doc.get("total_requests", 0),
                         "total_item_investigations": doc.get("total_investigations", 0),
                         "unique_item_requests": doc.get("unique_requests", 0),
-                        "unique_item_investigations": doc.get("unique_investigations", 0),
+                        "unique_item_investigations": doc.get(
+                            "unique_investigations", 0
+                        ),
                     }
                 )
 
@@ -426,6 +438,8 @@ class Command(BaseCommand):
                         "total_item_requests": doc.get("total_requests", 0),
                         "total_item_investigations": doc.get("total_investigations", 0),
                         "unique_title_requests": doc.get("unique_requests", 0),
-                        "unique_title_investigations": doc.get("unique_investigations", 0),
+                        "unique_title_investigations": doc.get(
+                            "unique_investigations", 0
+                        ),
                     }
                 )
