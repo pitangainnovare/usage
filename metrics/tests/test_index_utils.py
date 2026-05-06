@@ -14,7 +14,8 @@ from scielo_usage_counter.values import (
     MEDIA_FORMAT_UNDEFINED,
 )
 
-from metrics.counter import access, documents as index_docs
+from metrics.counter import access
+from metrics.counter import documents as index_docs
 from metrics.opensearch.names import generate_month_index_name, generate_year_index_name
 
 
@@ -116,7 +117,9 @@ class TestIndexUtils(unittest.TestCase):
         result, _ = access.is_valid_item_access_data(data)
         self.assertTrue(result)
 
-    def test_is_valid_item_access_data_dataset_without_source_or_language_is_valid(self):
+    def test_is_valid_item_access_data_dataset_without_source_or_language_is_valid(
+        self,
+    ):
         data = {
             "document_type": "dataset",
             "scielo_issn": DEFAULT_SCIELO_ISSN,
@@ -219,6 +222,46 @@ class TestIndexUtils(unittest.TestCase):
 
         self.assertEqual(data["media_language"], "un")
 
+    def test_extract_item_access_data_sets_document_title_by_type(self):
+        chapter = access.extract_item_access_data(
+            "books",
+            {
+                "book_id": "q7gtd",
+                "chapter_id": "03",
+                "pid_generic": "book:q7gtd/chapter:03",
+                "book_title": "Book Title",
+                "chapter_title": "Chapter Title",
+                "media_format": MEDIA_FORMAT_HTML,
+                "media_language": "en",
+                "content_type": CONTENT_TYPE_FULL_TEXT,
+            },
+        )
+        book = access.extract_item_access_data(
+            "books",
+            {
+                "book_id": "q7gtd",
+                "pid_generic": "book:q7gtd",
+                "book_title": "Book Title",
+                "media_format": MEDIA_FORMAT_HTML,
+                "media_language": "en",
+                "content_type": CONTENT_TYPE_FULL_TEXT,
+            },
+        )
+        article = access.extract_item_access_data(
+            "scl",
+            {
+                "scielo_issn": "1234-5678",
+                "pid_v3": "jGJccQ7bFdbz6wy3nfXGVdv",
+                "article_title": "Article Title",
+                "media_format": MEDIA_FORMAT_HTML,
+                "content_type": CONTENT_TYPE_FULL_TEXT,
+            },
+        )
+
+        self.assertEqual(chapter["document_title"], "Chapter Title")
+        self.assertEqual(book["document_title"], "Book Title")
+        self.assertEqual(article["document_title"], "Article Title")
+
     def test_extract_item_access_data_normalizes_scielo_collection_document_types(self):
         preprint = access.extract_item_access_data(
             "preprints",
@@ -268,6 +311,7 @@ class TestIndexUtils(unittest.TestCase):
             "media_format": MEDIA_FORMAT_HTML,
             "content_type": CONTENT_TYPE_FULL_TEXT,
             "publication_year": "2023",
+            "document_title": "Book Title",
             "source_main_title": "Book Title",
             "source_subject_area_capes": [],
             "source_subject_area_wos": [],
@@ -295,6 +339,7 @@ class TestIndexUtils(unittest.TestCase):
         self.assertEqual(result["access_country_code"], "BR")
         self.assertEqual(result["content_language"], "en")
         self.assertEqual(result["title_pid_generic"], "BOOK:Q7GTD")
+        self.assertEqual(result["document"], {"title": "Book Title"})
         self.assertIn("user_session_id", result)
 
     def test_update_results_with_item_access_data_rejects_invalid_local_datetime(self):
@@ -322,7 +367,9 @@ class TestIndexUtils(unittest.TestCase):
 
         self.assertEqual(results, {})
 
-    def test_update_results_with_item_access_data_does_not_expand_book_into_segments(self):
+    def test_update_results_with_item_access_data_does_not_expand_book_into_segments(
+        self,
+    ):
         results = {}
         item_access_data = {
             "collection": "books",
@@ -408,7 +455,9 @@ class TestIndexUtils(unittest.TestCase):
         )
 
         metrics_data = index_docs.convert_raw_results_to_index_documents(results)
-        month_item = metrics_data["month"]["books|c2248|||BOOK:C2248/CHAPTER:03|2024-01|Open|Regular|2018"]
+        month_item = metrics_data["month"][
+            "books|c2248|||BOOK:C2248/CHAPTER:03|2024-01|Open|Regular|2018"
+        ]
 
         self.assertEqual(month_item["total_requests"], 2)
         self.assertEqual(month_item["unique_requests"], 1)
@@ -456,7 +505,9 @@ class TestIndexUtils(unittest.TestCase):
         )
 
         metrics_data = index_docs.convert_raw_results_to_index_documents(results)
-        month_item = metrics_data["month"]["books|c2248|||BOOK:C2248/CHAPTER:03|2024-01|Open|Regular|2018"]
+        month_item = metrics_data["month"][
+            "books|c2248|||BOOK:C2248/CHAPTER:03|2024-01|Open|Regular|2018"
+        ]
 
         self.assertEqual(month_item["total_requests"], 1)
         self.assertEqual(month_item["unique_requests"], 1)
@@ -488,6 +539,7 @@ class TestIndexUtils(unittest.TestCase):
                 "pid_v2": None,
                 "pid_v3": None,
                 "pid_generic": "BOOK:Q7GTD/CHAPTER:03",
+                "document": {"title": "Chapter Title"},
                 "title_pid_generic": "BOOK:Q7GTD",
                 "user_session_id": "browser|1.0|127.0.0.1|2024-01-15|10",
                 "click_timestamps": {"00:05": 1},
@@ -523,25 +575,40 @@ class TestIndexUtils(unittest.TestCase):
         self.assertEqual(len(metrics_data["month"]), 2)
         self.assertEqual(len(metrics_data["year"]), 2)
 
-        month_item = metrics_data["month"]["books|q7gtd|||BOOK:Q7GTD/CHAPTER:03|2024-01|Open|Regular|2023"]
-        self.assertEqual(month_item["access_month"], "2024-01")
+        month_item = metrics_data["month"][
+            "books|q7gtd|||BOOK:Q7GTD/CHAPTER:03|2024-01|Open|Regular|2023"
+        ]
+        self.assertEqual(month_item["access"], {"month": "2024-01"})
+        self.assertIn("daily_metrics", month_item)
+        self.assertNotIn("by_day", month_item)
         self.assertNotIn("access_country_code", month_item)
         self.assertNotIn("content_language", month_item)
-        self.assertEqual(month_item["document_type"], "chapter")
-        self.assertEqual(month_item["metric_scope"], "item")
-        self.assertEqual(month_item["counter_data_type"], "Book_Segment")
-        self.assertEqual(month_item["title_pid_generic"], "BOOK:Q7GTD")
+        self.assertEqual(month_item["document"]["id"], "BOOK:Q7GTD/CHAPTER:03")
+        self.assertEqual(month_item["document"]["type"], "chapter")
+        self.assertEqual(month_item["document"]["title"], "Chapter Title")
+        self.assertEqual(month_item["document"]["parent_id"], "BOOK:Q7GTD")
+        self.assertEqual(month_item["document"]["publication_year"], "2023")
+        self.assertEqual(month_item["document"]["identifiers"]["book_id"], "q7gtd")
+        self.assertEqual(month_item["document"]["identifiers"]["chapter_id"], "03")
+        self.assertEqual(month_item["document"]["identifiers"]["isbn"], "9788578791889")
+        self.assertNotIn("pid_generic", month_item["document"]["identifiers"])
+        self.assertEqual(month_item["counter"]["metric_scope"], "item")
+        self.assertEqual(month_item["counter"]["data_type"], "Book_Segment")
         self.assertEqual(month_item["total_requests"], 1)
         self.assertEqual(month_item["unique_requests"], 1)
         self.assertNotIn("scielo_issn", month_item["source"])
-        self.assertEqual(month_item["source"]["identifiers"]["book_id"], "q7gtd")
-        self.assertEqual(month_item["source"]["publisher"], ["SciELO Books"])
+        self.assertNotIn("book_id", month_item["source"]["identifiers"])
+        self.assertEqual(month_item["source"]["publisher_name"], ["SciELO Books"])
 
-        month_title = metrics_data["month"]["title|books|q7gtd|||BOOK:Q7GTD|2024-01|Open|Regular|2023"]
-        self.assertEqual(month_title["document_type"], "book")
-        self.assertEqual(month_title["metric_scope"], "title")
-        self.assertEqual(month_title["counter_data_type"], "Book")
-        self.assertEqual(month_title["pid_generic"], "BOOK:Q7GTD")
+        month_title = metrics_data["month"][
+            "title|books|q7gtd|||BOOK:Q7GTD|2024-01|Open|Regular|2023"
+        ]
+        self.assertEqual(month_title["document"]["id"], "BOOK:Q7GTD")
+        self.assertEqual(month_title["document"]["type"], "book")
+        self.assertEqual(month_title["document"]["title"], "Book Title")
+        self.assertNotIn("parent_id", month_title["document"])
+        self.assertEqual(month_title["counter"]["metric_scope"], "title")
+        self.assertEqual(month_title["counter"]["data_type"], "Book")
         self.assertEqual(month_title["total_requests"], 1)
         self.assertEqual(month_title["total_investigations"], 1)
         self.assertEqual(month_title["unique_requests"], 1)
@@ -550,16 +617,25 @@ class TestIndexUtils(unittest.TestCase):
         year_item = metrics_data["year"][
             "books|q7gtd|||BOOK:Q7GTD/CHAPTER:03|en|BR|2024|Open|Regular|2023"
         ]
-        self.assertEqual(year_item["access_year"], "2024")
-        self.assertEqual(year_item["access_country_code"], "BR")
-        self.assertEqual(year_item["content_language"], "en")
-        self.assertEqual(year_item["metric_scope"], "item")
+        self.assertEqual(
+            year_item["access"],
+            {"year": "2024", "country_code": "BR", "content_language": "en"},
+        )
+        self.assertNotIn("daily_metrics", year_item)
+        self.assertNotIn("by_day", year_item)
+        self.assertNotIn("access_month", year_item)
+        self.assertEqual(year_item["document"]["title"], "Chapter Title")
+        self.assertEqual(year_item["counter"]["metric_scope"], "item")
         self.assertEqual(year_item["total_requests"], 1)
 
         year_title = metrics_data["year"][
             "title|books|q7gtd|||BOOK:Q7GTD|en|BR|2024|Open|Regular|2023"
         ]
-        self.assertEqual(year_title["metric_scope"], "title")
+        self.assertEqual(year_title["counter"]["metric_scope"], "title")
+        self.assertEqual(year_title["document"]["title"], "Book Title")
+        self.assertNotIn("daily_metrics", year_title)
+        self.assertNotIn("by_day", year_title)
+        self.assertNotIn("access_month", year_title)
         self.assertEqual(year_title["total_requests"], 1)
         self.assertEqual(year_title["total_investigations"], 1)
         self.assertEqual(year_title["unique_requests"], 1)
@@ -615,13 +691,18 @@ class TestIndexUtils(unittest.TestCase):
             "data|scielo-data|||10.48331/SCIELODATA.ABC123|2024-01|Open|Regular|2024"
         ]
 
-        self.assertEqual(preprint_doc["counter_data_type"], "Article")
-        self.assertEqual(preprint_doc["scielo_document_type"], "preprint")
-        self.assertEqual(preprint_doc["article_version"], "Preprint")
-        self.assertEqual(dataset_doc["counter_data_type"], "Dataset")
-        self.assertIsNone(dataset_doc["article_version"])
+        self.assertEqual(preprint_doc["counter"]["data_type"], "Article")
+        self.assertEqual(preprint_doc["document"]["type"], "preprint")
+        self.assertEqual(preprint_doc["document"]["id"], "10.1590/SCIELOPREPRINTS.1234")
+        self.assertNotIn("pid_generic", preprint_doc["document"].get("identifiers", {}))
+        self.assertNotIn("scielo_document_type", preprint_doc)
+        self.assertEqual(preprint_doc["counter"]["article_version"], "Preprint")
+        self.assertEqual(dataset_doc["counter"]["data_type"], "Dataset")
+        self.assertNotIn("article_version", dataset_doc["counter"])
 
-    def test_convert_raw_results_to_index_documents_dedupes_book_unique_item_across_formats(self):
+    def test_convert_raw_results_to_index_documents_dedupes_book_unique_item_across_formats(
+        self,
+    ):
         data = {
             "books|c2248|||BOOK:C2248/CHAPTER:03|sess|BR|pt|html|full_text": {
                 "collection": "books",
@@ -677,8 +758,12 @@ class TestIndexUtils(unittest.TestCase):
 
         metrics_data = index_docs.convert_raw_results_to_index_documents(data)
 
-        month_item = metrics_data["month"]["books|c2248|||BOOK:C2248/CHAPTER:03|2024-01|Open|Regular|2018"]
-        month_title = metrics_data["month"]["title|books|c2248|||BOOK:C2248|2024-01|Open|Regular|2018"]
+        month_item = metrics_data["month"][
+            "books|c2248|||BOOK:C2248/CHAPTER:03|2024-01|Open|Regular|2018"
+        ]
+        month_title = metrics_data["month"][
+            "title|books|c2248|||BOOK:C2248|2024-01|Open|Regular|2018"
+        ]
 
         self.assertEqual(month_item["total_requests"], 2)
         self.assertEqual(month_item["total_investigations"], 2)
@@ -687,7 +772,9 @@ class TestIndexUtils(unittest.TestCase):
         self.assertEqual(month_title["unique_requests"], 1)
         self.assertEqual(month_title["unique_investigations"], 1)
 
-    def test_convert_raw_results_to_index_documents_skips_book_landing_page_from_item_scope(self):
+    def test_convert_raw_results_to_index_documents_skips_book_landing_page_from_item_scope(
+        self,
+    ):
         data = {
             "books|c2248|||BOOK:C2248|sess|BR|pt|html|abstract": {
                 "collection": "books",
@@ -696,6 +783,7 @@ class TestIndexUtils(unittest.TestCase):
                 "pid_v2": None,
                 "pid_v3": None,
                 "pid_generic": "BOOK:C2248",
+                "document": {"title": "C2248 Book"},
                 "title_pid_generic": "BOOK:C2248",
                 "user_session_id": "browser|1.0|127.0.0.1|2024-01-15|10",
                 "click_timestamps": {"00:05": 1},
@@ -727,7 +815,9 @@ class TestIndexUtils(unittest.TestCase):
             {"title|books|c2248|||BOOK:C2248|pt|BR|2024|Open|Regular|2018"},
         )
 
-    def test_convert_raw_results_to_index_documents_counts_whole_book_without_segments_as_book_segment(self):
+    def test_convert_raw_results_to_index_documents_counts_whole_book_without_segments_as_book_segment(
+        self,
+    ):
         data = {
             "books|c2248|||BOOK:C2248|sess|BR|pt|pdf|full_text": {
                 "collection": "books",
@@ -736,6 +826,7 @@ class TestIndexUtils(unittest.TestCase):
                 "pid_v2": None,
                 "pid_v3": None,
                 "pid_generic": "BOOK:C2248",
+                "document": {"title": "C2248 Book"},
                 "title_pid_generic": "BOOK:C2248",
                 "user_session_id": "browser|1.0|127.0.0.1|2024-01-15|10",
                 "click_timestamps": {"00:05": 1},
@@ -757,13 +848,22 @@ class TestIndexUtils(unittest.TestCase):
         }
 
         metrics_data = index_docs.convert_raw_results_to_index_documents(data)
-        month_item = metrics_data["month"]["books|c2248|||BOOK:C2248|2024-01|Open|Regular|2018"]
-        month_title = metrics_data["month"]["title|books|c2248|||BOOK:C2248|2024-01|Open|Regular|2018"]
+        month_item = metrics_data["month"][
+            "books|c2248|||BOOK:C2248|2024-01|Open|Regular|2018"
+        ]
+        month_title = metrics_data["month"][
+            "title|books|c2248|||BOOK:C2248|2024-01|Open|Regular|2018"
+        ]
 
-        self.assertEqual(month_item["counter_data_type"], "Book_Segment")
-        self.assertEqual(month_item["metric_scope"], "item")
-        self.assertEqual(month_title["counter_data_type"], "Book")
-        self.assertEqual(month_title["metric_scope"], "title")
+        self.assertEqual(month_item["counter"]["data_type"], "Book_Segment")
+        self.assertEqual(month_item["counter"]["metric_scope"], "item")
+        self.assertEqual(month_item["document"]["id"], "BOOK:C2248")
+        self.assertEqual(month_item["document"]["title"], "C2248 Book")
+        self.assertNotIn("parent_id", month_item["document"])
+        self.assertEqual(month_title["counter"]["data_type"], "Book")
+        self.assertEqual(month_title["counter"]["metric_scope"], "title")
+        self.assertEqual(month_title["document"]["id"], "BOOK:C2248")
+        self.assertEqual(month_title["document"]["title"], "C2248 Book")
 
     def test_convert_raw_results_aggregates_multiple_chapters_correctly(self):
         """Test that accessing multiple chapters creates correct title-level totals"""
@@ -819,17 +919,23 @@ class TestIndexUtils(unittest.TestCase):
         self.assertEqual(len(metrics_data["year"]), 3)  # 2 items + 1 title
 
         # Each item should have total=1, unique=1
-        month_item_1 = metrics_data["month"]["books|q7gtd|||BOOK:Q7GTD/CHAPTER:01|2024-01|Open|Regular|2023"]
+        month_item_1 = metrics_data["month"][
+            "books|q7gtd|||BOOK:Q7GTD/CHAPTER:01|2024-01|Open|Regular|2023"
+        ]
         self.assertEqual(month_item_1["total_requests"], 1)
         self.assertEqual(month_item_1["unique_requests"], 1)
 
-        month_item_2 = metrics_data["month"]["books|q7gtd|||BOOK:Q7GTD/CHAPTER:02|2024-01|Open|Regular|2023"]
+        month_item_2 = metrics_data["month"][
+            "books|q7gtd|||BOOK:Q7GTD/CHAPTER:02|2024-01|Open|Regular|2023"
+        ]
         self.assertEqual(month_item_2["total_requests"], 1)
         self.assertEqual(month_item_2["unique_requests"], 1)
 
         # Title should have total=2 (sum of both chapters)
         # Title unique should be 1 (same session accessed book, counted once)
-        month_title = metrics_data["month"]["title|books|q7gtd|||BOOK:Q7GTD|2024-01|Open|Regular|2023"]
+        month_title = metrics_data["month"][
+            "title|books|q7gtd|||BOOK:Q7GTD|2024-01|Open|Regular|2023"
+        ]
         self.assertEqual(month_title["total_requests"], 2)
         self.assertEqual(month_title["total_investigations"], 2)
         self.assertEqual(month_title["unique_requests"], 1)
