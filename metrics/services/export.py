@@ -64,22 +64,25 @@ def _sync_documents_group(
     index_prefix = settings.OPENSEARCH_INDEX_NAME
 
     for doc_id, document in documents.items():
+        access = document.get("access") or {}
         if granularity == "month":
             index_name = generate_month_index_name(
                 index_prefix=index_prefix,
                 collection=collection,
-                date=f"{document.get('access_month')}-01",
+                date=f"{access.get('month')}-01",
             )
             mappings = opensearch.get_index_mappings(collection, "month")
         else:
             index_name = generate_year_index_name(
                 index_prefix=index_prefix,
                 collection=collection,
-                date=f"{document.get('access_year')}-01-01",
+                date=f"{access.get('year')}-01-01",
             )
             mappings = opensearch.get_index_mappings(collection, "year")
 
-        grouped_documents.setdefault(index_name, {"mappings": mappings, "documents": {}})
+        grouped_documents.setdefault(
+            index_name, {"mappings": mappings, "documents": {}}
+        )
         grouped_documents[index_name]["documents"][doc_id] = document
 
     for index_name, payload in grouped_documents.items():

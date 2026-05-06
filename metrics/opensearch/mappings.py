@@ -1,162 +1,92 @@
-YEAR_INDEX_MAPPINGS = {
+TEXT_KEYWORD_MAPPING = {
+    "type": "text",
+    "fields": {"keyword": {"type": "keyword", "ignore_above": 512}},
+}
+
+IDENTIFIERS_MAPPING = {"type": "object", "dynamic": True}
+
+DOCUMENT_MAPPINGS = {
     "properties": {
-        "collection": {"type": "keyword"},
-        "source": {
-            "properties": {
-                "source_type": {"type": "keyword"},
-                "source_id": {"type": "keyword"},
-                "scielo_issn": {"type": "keyword"},
-                "main_title": {
-                    "type": "text",
-                    "fields": {
-                        "keyword": {
-                            "type": "keyword",
-                            "ignore_above": 512
-                        }
-                    }
-                },
-                "subject_area_capes": {"type": "keyword"},
-                "subject_area_wos": {"type": "keyword"},
-                "acronym": {"type": "keyword"},
-                "publisher_name": {"type": "keyword"},
-                "access_type": {"type": "keyword"},
-                "city": {"type": "keyword"},
-                "country": {"type": "keyword"},
-                "identifiers": {"type": "object"},
-            }
-        },
-        "document_type": {"type": "keyword"},
-        "scielo_document_type": {"type": "keyword"},
+        "id": {"type": "keyword"},
+        "type": {"type": "keyword"},
+        "title": TEXT_KEYWORD_MAPPING,
+        "parent_id": {"type": "keyword"},
+        "publication_year": {"type": "integer"},
+        "identifiers": IDENTIFIERS_MAPPING,
+    }
+}
+
+SOURCE_MAPPINGS = {
+    "properties": {
+        "id": {"type": "keyword"},
+        "type": {"type": "keyword"},
+        "title": TEXT_KEYWORD_MAPPING,
+        "scielo_issn": {"type": "keyword"},
+        "acronym": {"type": "keyword"},
+        "publisher_name": {"type": "keyword"},
+        "access_type": {"type": "keyword"},
+        "city": {"type": "keyword"},
+        "country": {"type": "keyword"},
+        "subject_area_capes": {"type": "keyword"},
+        "subject_area_wos": {"type": "keyword"},
+        "identifiers": IDENTIFIERS_MAPPING,
+    }
+}
+
+COUNTER_MAPPINGS = {
+    "properties": {
         "metric_scope": {"type": "keyword"},
-        "counter_data_type": {"type": "keyword"},
+        "data_type": {"type": "keyword"},
         "parent_data_type": {"type": "keyword"},
         "article_version": {"type": "keyword"},
-        "pid": {"type": "keyword"},
-        "pid_v2": {"type": "keyword"},
-        "pid_v3": {"type": "keyword"},
-        "pid_generic": {"type": "keyword"},
-        "publication_year": {"type": "integer"},
-        "counter_access_type": {"type": "keyword"},
+        "access_type": {"type": "keyword"},
         "access_method": {"type": "keyword"},
-        "access_year": {"type": "date", "format": "yyyy"},
-        "access_country_code": {"type": "keyword"},
+    }
+}
+
+MONTH_ACCESS_MAPPINGS = {
+    "properties": {
+        "month": {"type": "date", "format": "yyyy-MM"},
+    }
+}
+
+YEAR_ACCESS_MAPPINGS = {
+    "properties": {
+        "year": {"type": "date", "format": "yyyy"},
+        "country_code": {"type": "keyword"},
         "content_language": {"type": "keyword"},
-        "applied_jobs": {"type": "keyword", "index": False},
-        "total_requests": {"type": "integer"},
-        "total_investigations": {"type": "integer"},
-        "unique_requests": {"type": "integer"},
-        "unique_investigations": {"type": "integer"},
     }
 }
 
+METRIC_PROPERTIES = {
+    "total_requests": {"type": "integer"},
+    "total_investigations": {"type": "integer"},
+    "unique_requests": {"type": "integer"},
+    "unique_investigations": {"type": "integer"},
+}
 
-MONTH_INDEX_MAPPINGS = {
-    "properties": {
+
+def _build_index_mappings(granularity):
+    properties = {
         "collection": {"type": "keyword"},
-        "source": YEAR_INDEX_MAPPINGS["properties"]["source"],
-        "document_type": {"type": "keyword"},
-        "scielo_document_type": {"type": "keyword"},
-        "metric_scope": {"type": "keyword"},
-        "counter_data_type": {"type": "keyword"},
-        "parent_data_type": {"type": "keyword"},
-        "article_version": {"type": "keyword"},
-        "pid": {"type": "keyword"},
-        "pid_v2": {"type": "keyword"},
-        "pid_v3": {"type": "keyword"},
-        "pid_generic": {"type": "keyword"},
-        "publication_year": {"type": "integer"},
-        "counter_access_type": {"type": "keyword"},
-        "access_method": {"type": "keyword"},
-        "access_month": {"type": "date", "format": "yyyy-MM"},
+        "source": SOURCE_MAPPINGS,
+        "document": DOCUMENT_MAPPINGS,
+        "access": MONTH_ACCESS_MAPPINGS
+        if granularity == "month"
+        else YEAR_ACCESS_MAPPINGS,
+        "counter": COUNTER_MAPPINGS,
         "applied_jobs": {"type": "keyword", "index": False},
-        "daily_metrics": {"type": "object", "dynamic": True},
-        "total_requests": {"type": "integer"},
-        "total_investigations": {"type": "integer"},
-        "unique_requests": {"type": "integer"},
-        "unique_investigations": {"type": "integer"},
+        **METRIC_PROPERTIES,
     }
-}
+    if granularity == "month":
+        properties["daily_metrics"] = {"type": "object", "dynamic": True}
+    return {"properties": properties}
 
 
-BOOKS_YEAR_INDEX_MAPPINGS = {
-    "properties": {
-        "collection": {"type": "keyword"},
-        "source": {
-            "properties": {
-                "source_type": {"type": "keyword"},
-                "source_id": {"type": "keyword"},
-                "main_title": {
-                    "type": "text",
-                    "fields": {
-                        "keyword": {
-                            "type": "keyword",
-                            "ignore_above": 512
-                        }
-                    }
-                },
-                "access_type": {"type": "keyword"},
-                "publisher": {"type": "keyword"},
-                "city": {"type": "keyword"},
-                "country": {"type": "keyword"},
-                "identifiers": {
-                    "properties": {
-                        "book_id": {"type": "keyword"},
-                        "isbn": {"type": "keyword"},
-                        "eisbn": {"type": "keyword"},
-                        "doi": {"type": "keyword"},
-                    }
-                },
-            }
-        },
-        "document_type": {"type": "keyword"},
-        "scielo_document_type": {"type": "keyword"},
-        "metric_scope": {"type": "keyword"},
-        "counter_data_type": {"type": "keyword"},
-        "parent_data_type": {"type": "keyword"},
-        "article_version": {"type": "keyword"},
-        "pid": {"type": "keyword"},
-        "pid_generic": {"type": "keyword"},
-        "title_pid_generic": {"type": "keyword"},
-        "publication_year": {"type": "integer"},
-        "counter_access_type": {"type": "keyword"},
-        "access_method": {"type": "keyword"},
-        "access_year": {"type": "date", "format": "yyyy"},
-        "access_country_code": {"type": "keyword"},
-        "content_language": {"type": "keyword"},
-        "applied_jobs": {"type": "keyword", "index": False},
-        "total_requests": {"type": "integer"},
-        "total_investigations": {"type": "integer"},
-        "unique_requests": {"type": "integer"},
-        "unique_investigations": {"type": "integer"},
-    }
-}
-
-
-BOOKS_MONTH_INDEX_MAPPINGS = {
-    "properties": {
-        "collection": {"type": "keyword"},
-        "source": BOOKS_YEAR_INDEX_MAPPINGS["properties"]["source"],
-        "document_type": {"type": "keyword"},
-        "scielo_document_type": {"type": "keyword"},
-        "metric_scope": {"type": "keyword"},
-        "counter_data_type": {"type": "keyword"},
-        "parent_data_type": {"type": "keyword"},
-        "article_version": {"type": "keyword"},
-        "pid": {"type": "keyword"},
-        "pid_generic": {"type": "keyword"},
-        "title_pid_generic": {"type": "keyword"},
-        "publication_year": {"type": "integer"},
-        "counter_access_type": {"type": "keyword"},
-        "access_method": {"type": "keyword"},
-        "access_month": {"type": "date", "format": "yyyy-MM"},
-        "applied_jobs": {"type": "keyword", "index": False},
-        "daily_metrics": {"type": "object", "dynamic": True},
-        "total_requests": {"type": "integer"},
-        "total_investigations": {"type": "integer"},
-        "unique_requests": {"type": "integer"},
-        "unique_investigations": {"type": "integer"},
-    }
-}
+YEAR_INDEX_MAPPINGS = _build_index_mappings("year")
+MONTH_INDEX_MAPPINGS = _build_index_mappings("month")
+BOOKS_YEAR_INDEX_MAPPINGS = _build_index_mappings("year")
+BOOKS_MONTH_INDEX_MAPPINGS = _build_index_mappings("month")
 
 
 METRIC_FIELDS = (
@@ -172,6 +102,10 @@ def get_index_mappings(collection, granularity):
         raise ValueError("Granularity must be 'month' or 'year'.")
 
     if collection == "books":
-        return BOOKS_MONTH_INDEX_MAPPINGS if granularity == "month" else BOOKS_YEAR_INDEX_MAPPINGS
+        return (
+            BOOKS_MONTH_INDEX_MAPPINGS
+            if granularity == "month"
+            else BOOKS_YEAR_INDEX_MAPPINGS
+        )
 
     return MONTH_INDEX_MAPPINGS if granularity == "month" else YEAR_INDEX_MAPPINGS

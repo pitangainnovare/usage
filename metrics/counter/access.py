@@ -16,7 +16,10 @@ from core.utils.standardizer import (
     standardize_year_of_publication,
 )
 from core.utils.date_utils import extract_minute_second_key, truncate_datetime_to_hour
-from metrics.counter.identifiers import generate_item_access_id, generate_user_session_id
+from metrics.counter.identifiers import (
+    generate_item_access_id,
+    generate_user_session_id,
+)
 
 
 def extract_item_access_data(collection_acron3: str, translated_url: dict):
@@ -26,7 +29,9 @@ def extract_item_access_data(collection_acron3: str, translated_url: dict):
     source_type = _extract_source_type(collection_acron3, translated_url)
     source_id = _extract_source_id(collection_acron3, translated_url, source_type)
     scielo_issn = _extract_scielo_issn(translated_url, source_type, source_id)
-    document_type = _extract_document_type(collection_acron3, translated_url, source_type)
+    document_type = _extract_document_type(
+        collection_acron3, translated_url, source_type
+    )
     publication_year = _safe_standardize(
         standardize_year_of_publication,
         translated_url.get("year_of_publication"),
@@ -39,6 +44,7 @@ def extract_item_access_data(collection_acron3: str, translated_url: dict):
         "source_id": source_id,
         "scielo_issn": scielo_issn,
         "document_type": document_type,
+        "document_title": _extract_document_title(translated_url, document_type),
         "pid_v2": _safe_standardize(standardize_pid_v2, translated_url.get("pid_v2")),
         "pid_v3": _safe_standardize(standardize_pid_v3, translated_url.get("pid_v3")),
         "pid_generic": _safe_standardize(
@@ -59,7 +65,8 @@ def extract_item_access_data(collection_acron3: str, translated_url: dict):
         ),
         "media_format": translated_url.get("media_format"),
         "content_type": translated_url.get("content_type"),
-        "access_url": translated_url.get("access_url") or translated_url.get("normalized_url"),
+        "access_url": translated_url.get("access_url")
+        or translated_url.get("normalized_url"),
         "publication_year": publication_year,
         "counter_access_type": _counter_access_type(source_access_type),
         "access_method": "Regular",
@@ -73,7 +80,9 @@ def extract_item_access_data(collection_acron3: str, translated_url: dict):
         "source_publisher_name": translated_url.get("source_publisher_name")
         or translated_url.get("journal_publisher_name"),
         "source_access_type": source_access_type,
-        "source_identifiers": _extract_source_identifiers(translated_url, source_id, source_type),
+        "source_identifiers": _extract_source_identifiers(
+            translated_url, source_id, source_type
+        ),
         "source_city": translated_url.get("source_city"),
         "source_country": translated_url.get("source_country"),
     }
@@ -81,7 +90,10 @@ def extract_item_access_data(collection_acron3: str, translated_url: dict):
 
 def is_valid_item_access_data(data: dict, utm=None, ignore_utm_validation=False):
     if not isinstance(data, dict):
-        return False, {"message": "Invalid data format. Expected a dictionary.", "code": "invalid_format"}
+        return False, {
+            "message": "Invalid data format. Expected a dictionary.",
+            "code": "invalid_format",
+        }
 
     scielo_issn = data.get("scielo_issn")
     source_id = data.get("source_id")
@@ -96,23 +108,46 @@ def is_valid_item_access_data(data: dict, utm=None, ignore_utm_validation=False)
     has_source_identity = bool(source_id) or bool(
         scielo_issn and scielo_issn != DEFAULT_SCIELO_ISSN
     )
-    has_media_language = bool(media_language and media_language != MEDIA_LANGUAGE_UNDEFINED)
+    has_media_language = bool(
+        media_language and media_language != MEDIA_LANGUAGE_UNDEFINED
+    )
     has_pid = bool(pid_v2 or pid_v3 or pid_generic)
 
-    if not all([media_format and media_format != MEDIA_FORMAT_UNDEFINED, content_type and content_type != CONTENT_TYPE_UNDEFINED, has_pid]):
-        return False, {"message": "Missing required fields in item access data.", "code": "missing_fields"}
+    if not all(
+        [
+            media_format and media_format != MEDIA_FORMAT_UNDEFINED,
+            content_type and content_type != CONTENT_TYPE_UNDEFINED,
+            has_pid,
+        ]
+    ):
+        return False, {
+            "message": "Missing required fields in item access data.",
+            "code": "missing_fields",
+        }
 
     if document_type in {"article", "book", "chapter"} and not has_media_language:
-        return False, {"message": "Missing media language in item access data.", "code": "missing_fields"}
+        return False, {
+            "message": "Missing media language in item access data.",
+            "code": "missing_fields",
+        }
 
     if document_type == "article" and not has_source_identity:
-        return False, {"message": "Missing article source identity.", "code": "missing_fields"}
+        return False, {
+            "message": "Missing article source identity.",
+            "code": "missing_fields",
+        }
 
     if document_type in {"book", "chapter"} and not source_id:
-        return False, {"message": "Missing book source identity.", "code": "missing_fields"}
+        return False, {
+            "message": "Missing book source identity.",
+            "code": "missing_fields",
+        }
 
     if document_type in {"preprint", "dataset"} and not pid_generic:
-        return False, {"message": "Missing generic PID in item access data.", "code": "missing_fields"}
+        return False, {
+            "message": "Missing generic PID in item access data.",
+            "code": "missing_fields",
+        }
 
     if utm and not ignore_utm_validation:
         if (
@@ -121,7 +156,10 @@ def is_valid_item_access_data(data: dict, utm=None, ignore_utm_validation=False)
             and scielo_issn != DEFAULT_SCIELO_ISSN
             and not utm.is_valid_code(scielo_issn, utm.sources_metadata["issn_set"])
         ):
-            return False, {"message": f"Invalid scielo_issn: {scielo_issn}", "code": "invalid_scielo_issn"}
+            return False, {
+                "message": f"Invalid scielo_issn: {scielo_issn}",
+                "code": "invalid_scielo_issn",
+            }
 
         if (
             source_type
@@ -129,21 +167,37 @@ def is_valid_item_access_data(data: dict, utm=None, ignore_utm_validation=False)
             and source_id
             and source_id not in utm.sources_metadata.get("source_id_to_type", {})
         ):
-            return False, {"message": f"Invalid source_id: {source_id}", "code": "invalid_source_id"}
+            return False, {
+                "message": f"Invalid source_id: {source_id}",
+                "code": "invalid_source_id",
+            }
 
         if pid_v2 and not utm.is_valid_code(pid_v2, utm.documents_metadata["pid_set"]):
-            return False, {"message": f"Invalid pid_v2: {pid_v2}", "code": "invalid_pid_v2"}
+            return False, {
+                "message": f"Invalid pid_v2: {pid_v2}",
+                "code": "invalid_pid_v2",
+            }
 
         if pid_v3 and not utm.is_valid_code(pid_v3, utm.documents_metadata["pid_set"]):
-            return False, {"message": f"Invalid pid_v3: {pid_v3}", "code": "invalid_pid_v3"}
+            return False, {
+                "message": f"Invalid pid_v3: {pid_v3}",
+                "code": "invalid_pid_v3",
+            }
 
-        if pid_generic and not utm.is_valid_code(pid_generic, utm.documents_metadata["pid_set"]):
-            return False, {"message": f"Invalid pid_generic: {pid_generic}", "code": "invalid_pid_generic"}
+        if pid_generic and not utm.is_valid_code(
+            pid_generic, utm.documents_metadata["pid_set"]
+        ):
+            return False, {
+                "message": f"Invalid pid_generic: {pid_generic}",
+                "code": "invalid_pid_generic",
+            }
 
     return True, {"message": "Item access data is valid.", "code": "valid"}
 
 
-def update_results_with_item_access_data(results: dict, item_access_data: dict, line: dict):
+def update_results_with_item_access_data(
+    results: dict, item_access_data: dict, line: dict
+):
     col_acron3 = item_access_data.get("collection")
     source_key = (
         item_access_data.get("source_id")
@@ -156,7 +210,9 @@ def update_results_with_item_access_data(results: dict, item_access_data: dict, 
     media_format = item_access_data.get("media_format")
     content_language = item_access_data.get("media_language")
     content_type = item_access_data.get("content_type")
-    access_url = item_access_data.get("access_url") or _normalize_access_url(line.get("url"))
+    access_url = item_access_data.get("access_url") or _normalize_access_url(
+        line.get("url")
+    )
 
     client_name = line.get("client_name")
     client_version = line.get("client_version")
@@ -202,6 +258,7 @@ def update_results_with_item_access_data(results: dict, item_access_data: dict, 
                 "pid_v2": pid_v2,
                 "pid_v3": pid_v3,
                 "pid_generic": access_target.get("pid_generic"),
+                "document": _build_document(item_access_data),
                 "title_pid_generic": (
                     item_access_data.get("title_pid_generic")
                     or access_target.get("pid_generic")
@@ -218,7 +275,8 @@ def update_results_with_item_access_data(results: dict, item_access_data: dict, 
                 "access_year": access_year,
                 "access_month": access_month,
                 "publication_year": item_access_data.get("publication_year"),
-                "counter_access_type": item_access_data.get("counter_access_type") or "Open",
+                "counter_access_type": item_access_data.get("counter_access_type")
+                or "Open",
                 "access_method": item_access_data.get("access_method") or "Regular",
                 "source": {
                     "source_type": item_access_data.get("source_type"),
@@ -229,7 +287,9 @@ def update_results_with_item_access_data(results: dict, item_access_data: dict, 
                     "access_type": item_access_data.get("source_access_type"),
                     "city": item_access_data.get("source_city"),
                     "country": item_access_data.get("source_country"),
-                    "subject_area_capes": item_access_data.get("source_subject_area_capes"),
+                    "subject_area_capes": item_access_data.get(
+                        "source_subject_area_capes"
+                    ),
                     "subject_area_wos": item_access_data.get("source_subject_area_wos"),
                     "acronym": item_access_data.get("source_acronym"),
                     "publisher_name": item_access_data.get("source_publisher_name"),
@@ -246,7 +306,9 @@ def update_results_with_item_access_data(results: dict, item_access_data: dict, 
             media_format,
             content_type,
         )
-        timestamps_by_url = results[item_access_id].setdefault("click_timestamps_by_url", {})
+        timestamps_by_url = results[item_access_id].setdefault(
+            "click_timestamps_by_url", {}
+        )
         url_timestamps = timestamps_by_url.setdefault(access_url_key, {})
         if ms_key not in url_timestamps:
             url_timestamps[ms_key] = 0
@@ -276,7 +338,9 @@ def _extract_source_type(collection_acron3, translated_url):
     ):
         return "journal"
 
-    if translated_url.get("journal_acronym") or translated_url.get("journal_main_title"):
+    if translated_url.get("journal_acronym") or translated_url.get(
+        "journal_main_title"
+    ):
         return "journal"
 
     return "other"
@@ -328,6 +392,18 @@ def _extract_source_title(translated_url):
     )
 
 
+def _extract_document_title(translated_url, document_type):
+    if document_type == "chapter":
+        return translated_url.get("chapter_title")
+    if document_type == "book":
+        return translated_url.get("book_title")
+    return (
+        translated_url.get("document_title")
+        or translated_url.get("article_title")
+        or translated_url.get("title")
+    )
+
+
 def _extract_document_type(collection_acron3, translated_url, source_type):
     document_type = translated_url.get("document_type")
     if document_type:
@@ -356,7 +432,11 @@ def _extract_document_type(collection_acron3, translated_url, source_type):
 def _extract_source_identifiers(translated_url, source_id, source_type):
     identifiers = translated_url.get("source_identifiers")
     if isinstance(identifiers, dict):
-        compact = {key: value for key, value in identifiers.items() if value not in (None, "", [], {}, ())}
+        compact = {
+            key: value
+            for key, value in identifiers.items()
+            if value not in (None, "", [], {}, ())
+        }
         if compact:
             return compact
 
@@ -369,7 +449,11 @@ def _extract_source_identifiers(translated_url, source_id, source_type):
         "eisbn": translated_url.get("eisbn"),
         "doi": translated_url.get("doi"),
     }
-    compact = {key: value for key, value in compact.items() if value not in (None, "", [], {}, ())}
+    compact = {
+        key: value
+        for key, value in compact.items()
+        if value not in (None, "", [], {}, ())
+    }
     return compact or None
 
 
@@ -409,6 +493,13 @@ def _standardize_pid_generic_list(values):
     return items
 
 
+def _build_document(item_access_data):
+    title = item_access_data.get("document_title")
+    if not title:
+        return {}
+    return {"title": title}
+
+
 def _iter_access_targets(item_access_data):
     return [
         {
@@ -422,7 +513,9 @@ def _normalize_access_url(url):
     if not url:
         return None
     parsed_url = urlparse(str(url).strip())
-    path = parsed_url.path if parsed_url.scheme or parsed_url.netloc else str(url).strip()
+    path = (
+        parsed_url.path if parsed_url.scheme or parsed_url.netloc else str(url).strip()
+    )
     path = unquote(path or "")
     path = path.split("?", 1)[0].split("#", 1)[0].split()[0]
     path = re.sub(r"/+", "/", path)
@@ -431,8 +524,10 @@ def _normalize_access_url(url):
 
 
 def _fallback_access_url_key(pid_generic, media_format, content_type):
-    return "|".join([
-        str(pid_generic or ""),
-        str(media_format or ""),
-        str(content_type or ""),
-    ])
+    return "|".join(
+        [
+            str(pid_generic or ""),
+            str(media_format or ""),
+            str(content_type or ""),
+        ]
+    )

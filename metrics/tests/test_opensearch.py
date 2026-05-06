@@ -52,10 +52,41 @@ class OpenSearchUsageClientTests(TestCase):
             opensearch.get_index_mappings("books", "year"),
             opensearch.BOOKS_YEAR_INDEX_MAPPINGS,
         )
-        self.assertIn("metric_scope", opensearch.BOOKS_MONTH_INDEX_MAPPINGS["properties"])
-        self.assertIn("counter_data_type", opensearch.BOOKS_YEAR_INDEX_MAPPINGS["properties"])
-        self.assertIn("title_pid_generic", opensearch.BOOKS_YEAR_INDEX_MAPPINGS["properties"])
-        self.assertIn("applied_jobs", opensearch.BOOKS_MONTH_INDEX_MAPPINGS["properties"])
+        self.assertIn("counter", opensearch.BOOKS_MONTH_INDEX_MAPPINGS["properties"])
+        self.assertIn("access", opensearch.BOOKS_YEAR_INDEX_MAPPINGS["properties"])
+        self.assertIn(
+            "applied_jobs", opensearch.BOOKS_MONTH_INDEX_MAPPINGS["properties"]
+        )
+        for mappings in (
+            opensearch.MONTH_INDEX_MAPPINGS,
+            opensearch.YEAR_INDEX_MAPPINGS,
+            opensearch.BOOKS_MONTH_INDEX_MAPPINGS,
+            opensearch.BOOKS_YEAR_INDEX_MAPPINGS,
+        ):
+            for removed_field in (
+                "document_type",
+                "scielo_document_type",
+                "pid",
+                "pid_v2",
+                "pid_v3",
+                "pid_generic",
+                "title_pid_generic",
+                "counter_data_type",
+                "access_month",
+                "access_year",
+            ):
+                self.assertNotIn(removed_field, mappings["properties"])
+            document_mapping = mappings["properties"]["document"]
+            self.assertEqual(document_mapping["properties"]["id"]["type"], "keyword")
+            self.assertEqual(document_mapping["properties"]["title"]["type"], "text")
+            self.assertEqual(
+                document_mapping["properties"]["title"]["fields"]["keyword"]["type"],
+                "keyword",
+            )
+            self.assertEqual(
+                mappings["properties"]["source"]["properties"]["id"]["type"],
+                "keyword",
+            )
 
     @patch("metrics.opensearch.client.helpers.bulk")
     @patch.object(opensearch.OpenSearchUsageClient, "get_opensearch_client")
@@ -72,9 +103,8 @@ class OpenSearchUsageClientTests(TestCase):
             documents={
                 "doc-1": {
                     "collection": "books",
-                    "pid": "BOOK:WD",
-                    "pid_generic": "BOOK:WD",
-                    "access_date": "2025-06-03",
+                    "document": {"id": "BOOK:WD"},
+                    "access": {"month": "2025-06"},
                     "total_requests": 3,
                     "total_investigations": 4,
                     "unique_requests": 2,
@@ -88,5 +118,7 @@ class OpenSearchUsageClientTests(TestCase):
         self.assertEqual(len(actions), 1)
         action = actions[0]
         self.assertEqual(action["_op_type"], "update")
-        self.assertEqual(action["script"]["params"]["job_id"], "books|2025-06-03|abc123")
+        self.assertEqual(
+            action["script"]["params"]["job_id"], "books|2025-06-03|abc123"
+        )
         self.assertEqual(action["upsert"], {"applied_jobs": []})

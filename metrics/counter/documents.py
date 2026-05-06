@@ -9,7 +9,10 @@ from metrics.counter.aggregation import (
     parent_data_type,
     should_create_book_item_document,
 )
-from metrics.counter.identifiers import generate_month_document_id, generate_year_document_id
+from metrics.counter.identifiers import (
+    generate_month_document_id,
+    generate_year_document_id,
+)
 
 
 def convert_to_month_index_documents(data: dict):
@@ -168,7 +171,9 @@ def _generate_document_id(value, granularity, metric_scope=None, pid_generic=Non
     pid_generic = pid_generic or value.get("pid_generic")
     publication_year = str(value.get("publication_year") or "0001")
     if granularity == "month":
-        access_month = value.get("access_date", "")[:7] if value.get("access_date") else ""
+        access_month = (
+            value.get("access_date", "")[:7] if value.get("access_date") else ""
+        )
         return generate_month_document_id(
             collection=value.get("collection"),
             source_key=value.get("source_key"),
@@ -198,125 +203,224 @@ def _generate_document_id(value, granularity, metric_scope=None, pid_generic=Non
     )
 
 
-def _build_base_document(value, granularity, metric_scope=None, pid_generic=None, document_type=None):
+def _build_base_document(
+    value, granularity, metric_scope=None, pid_generic=None, document_type=None
+):
     collection = value.get("collection")
+    scope = metric_scope or "item"
     if collection == "books":
-        normalized_pid_generic = pid_generic or value.get("pid_generic")
-        title_pid_generic = extract_title_pid_generic(value, fallback=normalized_pid_generic)
+        document_id = pid_generic or value.get("pid_generic")
+        parent_id = extract_title_pid_generic(value, fallback=document_id)
+        if parent_id == document_id or scope == "title":
+            parent_id = None
+        raw_source = value.get("source") or {}
+        source = _build_source(raw_source)
         base_document = {
             "collection": collection,
-            "source": _build_books_source(value.get("source")),
-            "document_type": document_type or value.get("document_type"),
-            "scielo_document_type": document_type or value.get("document_type"),
-            "metric_scope": metric_scope or "item",
-            "counter_data_type": "Book" if metric_scope == "title" else "Book_Segment",
-            "parent_data_type": "Book" if metric_scope != "title" else None,
-            "title_pid_generic": title_pid_generic,
-            "pid": normalized_pid_generic,
-            "pid_generic": normalized_pid_generic,
-            "publication_year": value.get("publication_year"),
-            "counter_access_type": value.get("counter_access_type") or "Open",
-            "access_method": value.get("access_method") or "Regular",
+            "source": source,
+            "document": _build_document(
+                value=value,
+                document_id=document_id,
+                document_type=document_type or value.get("document_type"),
+                parent_id=parent_id,
+                source_identifiers=raw_source.get("identifiers"),
+                metric_scope=scope,
+            ),
+            "counter": _compact_dict(
+                {
+                    "metric_scope": scope,
+                    "data_type": "Book" if scope == "title" else "Book_Segment",
+                    "parent_data_type": "Book" if scope != "title" else None,
+                    "access_type": value.get("counter_access_type") or "Open",
+                    "access_method": value.get("access_method") or "Regular",
+                }
+            ),
             "total_requests": 0,
             "total_investigations": 0,
             "unique_requests": 0,
             "unique_investigations": 0,
         }
-        _apply_access_fields(base_document, value, granularity)
-        if granularity == "year":
-            base_document["content_language"] = value.get("content_language")
-            base_document["access_country_code"] = value.get("access_country_code")
+        base_document["access"] = _build_access(value, granularity)
+        if granularity == "month":
+            base_document["daily_metrics"] = _build_daily_metrics(value)
         return base_document
 
+    document_type = value.get("document_type")
+    document_id = value.get("pid_v3") or value.get("pid_v2") or value.get("pid_generic")
     base_document = {
         "collection": collection,
-        "source": _build_standard_source(value.get("source")),
-        "document_type": value.get("document_type"),
-        "scielo_document_type": value.get("document_type"),
-        "metric_scope": "item",
-        "counter_data_type": counter_data_type(value.get("document_type")),
-        "parent_data_type": parent_data_type(
-            value.get("document_type"),
-            (value.get("source") or {}).get("source_type"),
+        "source": _build_source(value.get("source")),
+        "document": _build_document(
+            value=value,
+            document_id=document_id,
+            document_type=document_type,
         ),
-        "article_version": article_version(value.get("document_type")),
-        "pid": value.get("pid_v3") or value.get("pid_v2") or value.get("pid_generic"),
-        "pid_v2": value.get("pid_v2"),
-        "pid_v3": value.get("pid_v3"),
-        "pid_generic": value.get("pid_generic"),
-        "publication_year": value.get("publication_year"),
-        "counter_access_type": value.get("counter_access_type") or "Open",
-        "access_method": value.get("access_method") or "Regular",
+        "counter": _compact_dict(
+            {
+                "metric_scope": "item",
+                "data_type": counter_data_type(document_type),
+                "parent_data_type": parent_data_type(
+                    document_type,
+                    (value.get("source") or {}).get("source_type"),
+                ),
+                "article_version": article_version(document_type),
+                "access_type": value.get("counter_access_type") or "Open",
+                "access_method": value.get("access_method") or "Regular",
+            }
+        ),
         "total_requests": 0,
         "total_investigations": 0,
         "unique_requests": 0,
         "unique_investigations": 0,
     }
-    _apply_access_fields(base_document, value, granularity)
-    if granularity == "year":
-        base_document["content_language"] = value.get("content_language")
-        base_document["access_country_code"] = value.get("access_country_code")
+    base_document["access"] = _build_access(value, granularity)
+    if granularity == "month":
+        base_document["daily_metrics"] = _build_daily_metrics(value)
     return base_document
 
 
-def _apply_access_fields(base_document, value, granularity):
+def _build_access(value, granularity):
     if granularity == "month":
-        base_document["access_month"] = value.get("access_date", "")[:7] if value.get("access_date") else ""
-        day = value.get("access_date", "")[-2:] if value.get("access_date") else "01"
-        base_document["daily_metrics"] = {
-            day: {
-                "total_requests": 0,
-                "total_investigations": 0,
-                "unique_requests": 0,
-                "unique_investigations": 0,
-            }
+        return {
+            "month": value.get("access_date", "")[:7]
+            if value.get("access_date")
+            else ""
         }
-        return
 
-    base_document["access_year"] = value.get("access_year")
+    return _compact_dict(
+        {
+            "year": value.get("access_year"),
+            "country_code": value.get("access_country_code"),
+            "content_language": value.get("content_language"),
+        }
+    )
 
 
-def _build_books_source(source):
-    source = source or {}
-    identifiers = source.get("identifiers") or {}
-    compact_identifiers = {
-        key: value
-        for key, value in identifiers.items()
-        if key in {"book_id", "isbn", "eisbn", "doi"} and value not in (None, "", [], {}, ())
-    }
-
+def _build_daily_metrics(value):
+    day = value.get("access_date", "")[-2:] if value.get("access_date") else "01"
     return {
-        "source_type": source.get("source_type"),
-        "source_id": source.get("source_id"),
-        "main_title": source.get("main_title"),
-        "access_type": source.get("access_type"),
-        "publisher": source.get("publisher_name"),
-        "city": source.get("city"),
-        "country": source.get("country"),
-        "identifiers": compact_identifiers,
+        day: {
+            "total_requests": 0,
+            "total_investigations": 0,
+            "unique_requests": 0,
+            "unique_investigations": 0,
+        }
     }
 
 
-def _build_standard_source(source):
+def _build_document(
+    value,
+    document_id,
+    document_type,
+    parent_id=None,
+    source_identifiers=None,
+    metric_scope="item",
+):
+    document = value.get("document") or {}
+    title = document.get("title")
+    if metric_scope == "title":
+        title = (value.get("source") or {}).get("main_title") or title
+
+    identifiers = _document_identifiers(
+        value=value,
+        document_id=document_id,
+        source_identifiers=source_identifiers,
+        metric_scope=metric_scope,
+    )
+
+    return _compact_dict(
+        {
+            "id": document_id,
+            "type": document_type,
+            "title": title,
+            "parent_id": parent_id,
+            "publication_year": value.get("publication_year"),
+            "identifiers": identifiers,
+        }
+    )
+
+
+def _document_identifiers(
+    value, document_id, source_identifiers=None, metric_scope="item"
+):
+    if value.get("collection") == "books" and metric_scope == "title":
+        identifiers = _book_identifiers_from_pid(document_id)
+        identifiers.update(source_identifiers or {})
+        return _compact_identifiers(identifiers, canonical_id=document_id)
+
+    document_identifiers = (value.get("document") or {}).get("identifiers") or {}
+    identifiers = {
+        "pid_v2": value.get("pid_v2"),
+        "pid_v3": value.get("pid_v3"),
+        "pid_generic": value.get("pid_generic"),
+    }
+    identifiers.update(document_identifiers)
+
+    if value.get("collection") == "books":
+        identifiers.update(_book_identifiers_from_pid(value.get("pid_generic")))
+        identifiers.update(source_identifiers or {})
+
+    return _compact_identifiers(identifiers, canonical_id=document_id)
+
+
+def _book_identifiers_from_pid(pid_generic):
+    value = str(pid_generic or "")
+    if not value.upper().startswith("BOOK:"):
+        return {}
+
+    identifiers = {}
+    parts = value.split("/", 1)
+    book_id = parts[0].split(":", 1)[1] if ":" in parts[0] else ""
+    if book_id:
+        identifiers["book_id"] = book_id
+
+    if len(parts) > 1 and parts[1].upper().startswith("CHAPTER:"):
+        chapter_id = parts[1].split(":", 1)[1] if ":" in parts[1] else ""
+        if chapter_id:
+            identifiers["chapter_id"] = chapter_id
+
+    return identifiers
+
+
+def _build_source(source):
     source = source or {}
-    identifiers = source.get("identifiers") or {}
-    compact_identifiers = {
-        key: value
-        for key, value in identifiers.items()
-        if value not in (None, "", [], {}, ())
-    }
+    source_id = source.get("source_id")
+    source_type = source.get("source_type")
+    identifiers = _compact_identifiers(
+        source.get("identifiers") or {}, canonical_id=source_id
+    )
 
+    return _compact_dict(
+        {
+            "id": source_id,
+            "type": source_type,
+            "title": source.get("main_title"),
+            "scielo_issn": None if source_type == "book" else source.get("scielo_issn"),
+            "acronym": source.get("acronym"),
+            "publisher_name": source.get("publisher_name"),
+            "subject_area_capes": source.get("subject_area_capes"),
+            "subject_area_wos": source.get("subject_area_wos"),
+            "access_type": source.get("access_type"),
+            "city": source.get("city"),
+            "country": source.get("country"),
+            "identifiers": identifiers,
+        }
+    )
+
+
+def _compact_identifiers(identifiers, canonical_id=None):
+    compact = {}
+    canonical_value = str(canonical_id or "").strip().upper()
+    for key, value in (identifiers or {}).items():
+        if value in (None, "", [], {}, ()):
+            continue
+        if canonical_value and str(value).strip().upper() == canonical_value:
+            continue
+        compact[key] = value
+    return compact
+
+
+def _compact_dict(data):
     return {
-        "source_type": source.get("source_type"),
-        "source_id": source.get("source_id"),
-        "scielo_issn": source.get("scielo_issn"),
-        "main_title": source.get("main_title"),
-        "acronym": source.get("acronym"),
-        "publisher_name": source.get("publisher_name"),
-        "subject_area_capes": source.get("subject_area_capes"),
-        "subject_area_wos": source.get("subject_area_wos"),
-        "access_type": source.get("access_type"),
-        "city": source.get("city"),
-        "country": source.get("country"),
-        "identifiers": compact_identifiers,
+        key: value for key, value in data.items() if value not in (None, "", [], {}, ())
     }
